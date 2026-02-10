@@ -50,7 +50,7 @@ const io = new Server(server, {
 });
 
 // ==========================================
-// 1. СНАЧАЛА ГЛОБАЛЬНЫЙ ЭКСПОРТ (ВАЖЕН ПОРЯДОК!)
+// 1. СНАЧАЛА ГЛОБАЛЬНЫЙ ЭКСПОРТ
 // ==========================================
 app.get('/api/export/global', async (req, res) => {
     try {
@@ -109,6 +109,8 @@ app.get('/api/export/global', async (req, res) => {
                             st_work: t.work_done ? 'ГОТОВО' : '',
                             st_doc: t.doc_done ? 'СДАНО' : ''
                         });
+                        
+                         // Зеленый фон для готовых
                          if (t.work_done) row.getCell('st_work').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } };
                          if (t.doc_done) row.getCell('st_doc').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } };
                     });
@@ -138,7 +140,7 @@ app.get('/api/export/global', async (req, res) => {
 });
 
 // ==========================================
-// 2. ПОТОМ ЭКСПОРТ КОНКРЕТНОГО ДОМА
+// 2. ЭКСПОРТ КОНКРЕТНОГО ДОМА (FIXED)
 // ==========================================
 app.get('/api/export/:buildingId', async (req, res) => {
     try {
@@ -152,23 +154,36 @@ app.get('/api/export/:buildingId', async (req, res) => {
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Отчет');
 
+        // Настройка колонок
         worksheet.columns = [
-            { header: 'Этаж', key: 'floor', width: 15 },
-            { header: 'Помещение', key: 'room', width: 20 },
-            { header: 'Работа', key: 'task', width: 40 },
-            { header: 'Ед. изм.', key: 'unit', width: 10 },
-            { header: 'Объем', key: 'volume', width: 10 },
-            { header: 'СМР (Факт)', key: 'work', width: 15 },
-            { header: 'ИД (Доки)', key: 'doc', width: 15 },
+            { header: 'Этаж', key: 'floor', width: 20 },
+            { header: 'Помещение', key: 'room', width: 25 },
+            { header: 'Работа', key: 'task', width: 50 },
+            { header: 'Ед. изм.', key: 'unit', width: 12, style: { alignment: { horizontal: 'center' } } },
+            { header: 'Объем', key: 'volume', width: 12 },
+            { header: 'СМР (Факт)', key: 'work', width: 18, style: { alignment: { horizontal: 'center' } } },
+            { header: 'ИД (Доки)', key: 'doc', width: 18, style: { alignment: { horizontal: 'center' } } },
         ];
 
-        worksheet.getRow(1).font = { bold: true };
-        worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+        // Стилизация заголовка
+        const headerRow = worksheet.getRow(1);
+        headerRow.font = { bold: true, size: 12 };
+        headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+        headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+        headerRow.height = 25;
 
         building.floors.forEach(floor => {
             floor.rooms.forEach(room => {
                 if (room.tasks.length === 0) {
-                    worksheet.addRow({ floor: floor.name, room: room.name, task: 'Нет работ', unit: '-', volume: '-', work: '-', doc: '-' });
+                    worksheet.addRow({ 
+                        floor: floor.name, 
+                        room: room.name, 
+                        task: 'Нет работ', 
+                        unit: '-', 
+                        volume: '-', 
+                        work: '-', 
+                        doc: '-' 
+                    });
                 } else {
                     room.tasks.forEach(task => {
                         const row = worksheet.addRow({
@@ -177,19 +192,47 @@ app.get('/api/export/:buildingId', async (req, res) => {
                             task: task.name,
                             unit: formatUnit(task.unit, task.unit_power),
                             volume: task.volume || 0,
-                            work: task.work_done ? 'ГОТОВО' : 'В работе',
-                            doc: task.doc_done ? 'СДАНО' : 'Нет'
+                            work: task.work_done ? 'ВЫПОЛНЕНО' : 'В работе',
+                            doc: task.doc_done ? 'ПОДПИСАНО' : 'Нет акта'
                         });
-                        if (task.work_done) row.getCell('work').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } };
-                        else row.getCell('work').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } };
-                        if (task.doc_done) row.getCell('doc').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } };
+
+                        // Логика цветов ячеек (по ТЗ: зеленый - все ок, красный - в процессе/нет)
+                        const green = { argb: 'FFC6EFCE' }; // Зеленый
+                        const red = { argb: 'FFFFC7CE' };   // Красный
+                        const yellow = { argb: 'FFFFEB9C' }; // Желтый
+
+                        // СМР
+                        if (task.work_done) {
+                            row.getCell('work').fill = { type: 'pattern', pattern: 'solid', fgColor: green };
+                        } else {
+                             row.getCell('work').fill = { type: 'pattern', pattern: 'solid', fgColor: red };
+                        }
+
+                        // ИД
+                        if (task.doc_done) {
+                            row.getCell('doc').fill = { type: 'pattern', pattern: 'solid', fgColor: green };
+                        } else {
+                            row.getCell('doc').fill = { type: 'pattern', pattern: 'solid', fgColor: red };
+                        }
                     });
                 }
             });
         });
 
+        // Границы таблицы
+        worksheet.eachRow((row, rowNumber) => {
+            row.eachCell((cell) => {
+                cell.border = {
+                    top: { style: 'thin' },
+                    left: { style: 'thin' },
+                    bottom: { style: 'thin' },
+                    right: { style: 'thin' }
+                };
+            });
+        });
+
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename="Report_${building.name}.xlsx"`);
+        res.setHeader('Content-Disposition', `attachment; filename="Report_${encodeURIComponent(building.name)}.xlsx"`);
         await workbook.xlsx.write(res);
         res.end();
     } catch (e) {

@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Building2, Filter, ArrowLeft, PlusCircle, ChevronUp, ChevronDown, Pencil, Trash2, Download, PieChart } from 'lucide-react';
+import { Building2, Filter, ArrowLeft, PlusCircle, Pencil, Trash2, Download, PieChart, Copy, GripVertical } from 'lucide-react';
 import { getRoomStatus } from '../utils/helpers';
 
 const BuildingPage = ({ buildings, user, actions, setSelectedRoom, filterGroupId, setFilterGroupId, groups, sysActions }) => {
@@ -8,6 +8,9 @@ const BuildingPage = ({ buildings, user, actions, setSelectedRoom, filterGroupId
     const navigate = useNavigate();
     const building = buildings.find(b => b.id === id);
     const hasEditRights = ['admin', 'architect'].includes(user.role);
+
+    // DnD State
+    const [draggedItem, setDraggedItem] = useState(null); // { type: 'floor' | 'room', id, index, parentId? }
 
     const stats = useMemo(() => {
         if (!building) return null;
@@ -53,10 +56,52 @@ const BuildingPage = ({ buildings, user, actions, setSelectedRoom, filterGroupId
         });
     }
 
+    const handleCopyFloor = (floorId) => {
+        sysActions.confirm("Копирование", "Создать полную копию этажа со всеми квартирами и работами?", () => {
+            actions.copyItem('floor', { buildingId: building.id, floorId });
+        });
+    };
+
+    const handleCopyRoom = (floorId, roomId, e) => {
+        e.stopPropagation();
+        sysActions.confirm("Копирование", "Создать копию помещения?", () => {
+            actions.copyItem('room', { buildingId: building.id, floorId, roomId });
+        });
+    };
+
     const handleDownloadReport = () => {
         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-        // Передаем username и role в URL для логов
         window.open(`${apiUrl}/api/export/${building.id}?username=${user.username}&role=${user.role}`, '_blank');
+    };
+
+    // --- DnD Logic ---
+    const onDragStart = (e, type, item, index, parentId = null) => {
+        e.stopPropagation();
+        setDraggedItem({ type, id: item.id, index, parentId });
+        // Set visual effect
+        e.target.classList.add('dragging');
+    };
+
+    const onDragEnd = (e) => {
+        e.target.classList.remove('dragging');
+        setDraggedItem(null);
+    };
+
+    const onDragOver = (e) => {
+        e.preventDefault(); // Necessary for Drop to work
+    };
+
+    const onDrop = (e, type, targetIndex, targetParentId = null) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!draggedItem) return;
+        if (draggedItem.type !== type) return; // Can't drop floor into room list
+        if (targetParentId !== draggedItem.parentId) return; // Can't drop room into another floor (for simplicity now)
+        if (draggedItem.index === targetIndex) return; // Dropped on self
+
+        actions.reorderItem(type, building.id, targetParentId, draggedItem.index, targetIndex);
+        setDraggedItem(null);
     };
 
     return (
@@ -136,20 +181,19 @@ const BuildingPage = ({ buildings, user, actions, setSelectedRoom, filterGroupId
 
             <div className="content-area">
                 <div className="floors-list">
-                    {building.floors.map((floor, idx) => (
-                        <div key={floor.id} className="floor-block">
+                    {building.floors.map((floor, floorIndex) => (
+                        <div 
+                            key={floor.id} 
+                            className="floor-block"
+                            draggable={hasEditRights}
+                            onDragStart={(e) => onDragStart(e, 'floor', floor, floorIndex)}
+                            onDragEnd={onDragEnd}
+                            onDragOver={onDragOver}
+                            onDrop={(e) => onDrop(e, 'floor', floorIndex)}
+                        >
                             <div className="floor-header">
                                 <span className="floor-title">
-                                    {hasEditRights && (
-                                        <div className="move-btn-group" style={{marginRight:'12px'}}>
-                                            <button className="move-btn" disabled={idx===0} onClick={() => actions.moveItem('floor', 'up', {buildingId: building.id, floorId: floor.id})}>
-                                                <ChevronUp size={14}/>
-                                            </button>
-                                            <button className="move-btn" disabled={idx===building.floors.length-1} onClick={() => actions.moveItem('floor', 'down', {buildingId: building.id, floorId: floor.id})}>
-                                                <ChevronDown size={14}/>
-                                            </button>
-                                        </div>
-                                    )}
+                                    {hasEditRights && <GripVertical size={16} style={{cursor:'grab', color:'var(--text-muted)'}}/>}
                                     {floor.name}
                                     {hasEditRights && (
                                         <button className="icon-btn-edit" style={{marginLeft:10}} onClick={() => handleRenameFloor(floor.id, floor.name)}>
@@ -159,26 +203,62 @@ const BuildingPage = ({ buildings, user, actions, setSelectedRoom, filterGroupId
                                 </span>
                                 {hasEditRights && (
                                     <div className="floor-actions" style={{display:'flex', alignItems:'center', gap: 15}}>
-                                        <button className="text-btn" onClick={() => handleAddRoom(floor.id)}>+ Квартира/Пом.</button>
-                                        <button className="icon-btn-danger" onClick={() => handleDeleteFloor(floor.id)}><Trash2 size={16}/></button>
+                                        <button className="text-btn" onClick={() => handleAddRoom(floor.id)}>+ Квартира</button>
+                                        <button className="icon-btn-edit" onClick={() => handleCopyFloor(floor.id)} title="Копировать этаж">
+                                            <Copy size={16}/>
+                                        </button>
+                                        <button className="icon-btn-danger" onClick={() => handleDeleteFloor(floor.id)} title="Удалить этаж">
+                                            <Trash2 size={16}/>
+                                        </button>
                                     </div>
                                 )}
                             </div>
                             <div className="rooms-grid">
-                                {floor.rooms.map(room => (
-                                    <div key={room.id} className={`room-item ${getRoomStatus(room, filterGroupId)}`}
-                                        onClick={() => setSelectedRoom({ buildingId: building.id, floorId: floor.id, room })}>
-                                        <div className="room-name">{room.name}</div>
-                                        <div className="room-stats">
-                                            {(() => {
-                                                const tasks = filterGroupId 
-                                                    ? room.tasks.filter(t => (t.groupId || 'uncategorized') === filterGroupId) 
-                                                    : room.tasks;
-                                                return `${tasks.filter(t => t.work_done && t.doc_done).length}/${tasks.length}`;
-                                            })()}
+                                {floor.rooms.map((room, roomIndex) => {
+                                    const statusClass = getRoomStatus(room, filterGroupId);
+                                    
+                                    // Проверка наличия задач для обводки при фильтрации
+                                    let hasFilteredTasks = false;
+                                    if (filterGroupId && filterGroupId !== '') {
+                                        hasFilteredTasks = room.tasks.some(t => {
+                                            const tGroup = t.groupId || 'uncategorized';
+                                            return tGroup === filterGroupId;
+                                        });
+                                    }
+
+                                    return (
+                                        <div 
+                                            key={room.id} 
+                                            className={`room-item ${statusClass} ${hasFilteredTasks ? 'filtered-highlight' : ''}`}
+                                            onClick={() => setSelectedRoom({ buildingId: building.id, floorId: floor.id, room })}
+                                            draggable={hasEditRights}
+                                            onDragStart={(e) => onDragStart(e, 'room', room, roomIndex, floor.id)}
+                                            onDragEnd={onDragEnd}
+                                            onDragOver={onDragOver}
+                                            onDrop={(e) => onDrop(e, 'room', roomIndex, floor.id)}
+                                        >
+                                            {hasEditRights && (
+                                                <div 
+                                                    style={{position:'absolute', top:4, right:4, opacity:0.6}}
+                                                    onClick={(e) => handleCopyRoom(floor.id, room.id, e)}
+                                                    title="Копировать"
+                                                >
+                                                    <Copy size={12}/>
+                                                </div>
+                                            )}
+                                            <div className="room-name">{room.name}</div>
+                                            <div className="room-stats">
+                                                {(() => {
+                                                    const tasks = filterGroupId 
+                                                        ? room.tasks.filter(t => (t.groupId || 'uncategorized') === filterGroupId) 
+                                                        : room.tasks;
+                                                    const done = tasks.filter(t => t.work_done && t.doc_done).length;
+                                                    return `${done}/${tasks.length}`;
+                                                })()}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                                 {floor.rooms.length === 0 && <div style={{color:'var(--text-muted)', fontSize:'0.9rem', width:'100%', textAlign:'center', padding: 10}}>Нет помещений</div>}
                             </div>
                         </div>

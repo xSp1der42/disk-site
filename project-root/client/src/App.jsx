@@ -151,12 +151,19 @@ function App() {
             emitAction('delete_item', { type, ids });
             if (type === 'building') navigate('/dashboard');
       },
+      // НОВОЕ: Перетаскивание
+      reorderItem: (type, buildingId, floorId, sourceIndex, destinationIndex) => {
+          emitAction('reorder_item', { type, buildingId, floorId, sourceIndex, destinationIndex });
+      },
       moveItem: (type, direction, ids) => emitAction('move_item', { type, direction, ids }),
       renameItem: (type, ids, newName) => emitAction('rename_item', { type, ids, newName }),
+      
+      // НОВОЕ: Копирование
+      copyItem: (type, ids) => emitAction('copy_item', { type, ids }),
+      
       createGroup: (name) => emitAction('create_group', { name }),
       deleteGroup: (groupId) => emitAction('delete_group', { groupId }),
       
-      // ИСПРАВЛЕНО: Добавлен unit_power
       addTask: (buildingId, floorId, roomId, taskData) => {
           emitAction('add_task', { 
               buildingId, 
@@ -166,7 +173,7 @@ function App() {
               groupId: taskData.groupId, 
               volume: taskData.volume, 
               unit: taskData.unit, 
-              unit_power: taskData.unit_power // Передаем степень на сервер
+              unit_power: taskData.unit_power
           });
       },
       
