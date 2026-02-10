@@ -92,7 +92,7 @@ const BuildingPage = ({ buildings, user, actions, setSelectedRoom, filterGroupId
 
     const onDragOver = (e) => {
         if (!isReorderingMode) return;
-        e.preventDefault(); 
+        e.preventDefault(); // Разрешаем Drop
     };
 
     const onDrop = (e, type, targetIndex, targetParentId = null) => {
@@ -103,7 +103,7 @@ const BuildingPage = ({ buildings, user, actions, setSelectedRoom, filterGroupId
         if (!draggedItem) return;
         if (draggedItem.type !== type) return; 
         
-        // Для комнат: разрешаем перенос только внутри одного этажа (для упрощения, как просили "между собой")
+        // Для комнат: разрешаем перенос только внутри одного этажа (по ТЗ: "между собой")
         if (type === 'room' && targetParentId !== draggedItem.parentId) return; 
 
         if (draggedItem.index === targetIndex) return;
@@ -250,7 +250,7 @@ const BuildingPage = ({ buildings, user, actions, setSelectedRoom, filterGroupId
                                         <div 
                                             key={room.id} 
                                             className={`room-item ${statusClass} ${hasFilteredTasks ? 'filtered-highlight' : ''}`}
-                                            onClick={() => setSelectedRoom({ buildingId: building.id, floorId: floor.id, room })}
+                                            onClick={() => !isReorderingMode && setSelectedRoom({ buildingId: building.id, floorId: floor.id, room })}
                                             draggable={isReorderingMode}
                                             onDragStart={(e) => onDragStart(e, 'room', room, roomIndex, floor.id)}
                                             onDragEnd={onDragEnd}

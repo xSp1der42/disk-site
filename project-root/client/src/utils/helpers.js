@@ -24,7 +24,7 @@ export const getRoomStatus = (room, filterGroupId) => {
         if (t.doc_done) hasAnyProgress = true;
         else hasAllDoc = false;
 
-        // Для полного зеленого
+        // Для полного зеленого нужно чтобы И то, И другое было готово у всех задач
         if (!t.work_done) allWorkDone = false;
         if (!t.doc_done) allDocDone = false;
     });

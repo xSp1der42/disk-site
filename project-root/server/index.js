@@ -50,7 +50,7 @@ const io = new Server(server, {
 });
 
 // ==========================================
-// 1. ГЛОБАЛЬНЫЙ ЭКСПОРТ (FIXED)
+// 1. ГЛОБАЛЬНЫЙ ЭКСПОРТ
 // ==========================================
 app.get('/api/export/global', async (req, res) => {
     try {
@@ -91,11 +91,10 @@ app.get('/api/export/global', async (req, res) => {
         buildings.forEach(b => {
             let bTotal = 0, bWork = 0, bDoc = 0;
 
-            // Сортировка этажей перед экспортом
+            // Сортировка этажей (важно для Excel)
             const sortedFloors = (b.floors || []).sort((x,y) => (x.order || 0) - (y.order || 0));
 
             sortedFloors.forEach(f => {
-                // Сортировка помещений
                 const sortedRooms = (f.rooms || []).sort((x,y) => (x.order || 0) - (y.order || 0));
 
                 sortedRooms.forEach(r => {
@@ -152,7 +151,7 @@ app.get('/api/export/global', async (req, res) => {
 });
 
 // ==========================================
-// 2. ЭКСПОРТ КОНКРЕТНОГО ДОМА (FIXED)
+// 2. ЭКСПОРТ КОНКРЕТНОГО ДОМА
 // ==========================================
 app.get('/api/export/:buildingId', async (req, res) => {
     try {
@@ -184,13 +183,13 @@ app.get('/api/export/:buildingId', async (req, res) => {
         headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
         headerRow.height = 25;
 
-        // Сортировка перед выводом (чтобы соответствовало порядку на экране)
+        // Сортировка данных перед записью
         const sortedFloors = (building.floors || []).sort((x,y) => (x.order || 0) - (y.order || 0));
 
         sortedFloors.forEach(floor => {
-             const sortedRooms = (floor.rooms || []).sort((x,y) => (x.order || 0) - (y.order || 0));
+            const sortedRooms = (floor.rooms || []).sort((x,y) => (x.order || 0) - (y.order || 0));
 
-             sortedRooms.forEach(room => {
+            sortedRooms.forEach(room => {
                 if (room.tasks.length === 0) {
                     worksheet.addRow({ 
                         floor: floor.name, 
@@ -216,19 +215,11 @@ app.get('/api/export/:buildingId', async (req, res) => {
                         const green = { argb: 'FFC6EFCE' }; // Зеленый
                         const red = { argb: 'FFFFC7CE' };   // Красный
 
-                        // СМР
-                        if (task.work_done) {
-                            row.getCell('work').fill = { type: 'pattern', pattern: 'solid', fgColor: green };
-                        } else {
-                             row.getCell('work').fill = { type: 'pattern', pattern: 'solid', fgColor: red };
-                        }
+                        if (task.work_done) row.getCell('work').fill = { type: 'pattern', pattern: 'solid', fgColor: green };
+                        else row.getCell('work').fill = { type: 'pattern', pattern: 'solid', fgColor: red };
 
-                        // ИД
-                        if (task.doc_done) {
-                            row.getCell('doc').fill = { type: 'pattern', pattern: 'solid', fgColor: green };
-                        } else {
-                            row.getCell('doc').fill = { type: 'pattern', pattern: 'solid', fgColor: red };
-                        }
+                        if (task.doc_done) row.getCell('doc').fill = { type: 'pattern', pattern: 'solid', fgColor: green };
+                        else row.getCell('doc').fill = { type: 'pattern', pattern: 'solid', fgColor: red };
                     });
                 }
             });
