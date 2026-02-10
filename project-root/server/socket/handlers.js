@@ -23,6 +23,7 @@ module.exports = function(io, socket) {
             const user = await User.findOne({ username, password });
             
             if (user) {
+                console.log(`Login success: ${user.username}`);
                 socket.emit('login_success', { 
                     username: user.username, 
                     role: user.role,
@@ -257,9 +258,7 @@ module.exports = function(io, socket) {
         } catch (e) { console.error(e); }
     });
 
-    // ==========================================
-    // НОВАЯ ЛОГИКА: ПЕРЕМЕЩЕНИЕ (Drag & Drop)
-    // ==========================================
+    // --- НОВОЕ: Переупорядочивание Drag & Drop ---
     socket.on('reorder_item', async ({ type, buildingId, floorId, sourceIndex, destinationIndex, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
@@ -269,7 +268,7 @@ module.exports = function(io, socket) {
             let arr = null;
 
             if (type === 'floor') {
-                // Сортируем текущий массив, чтобы индексы соответствовали порядку
+                // Сортируем текущий массив, чтобы индексы соответствовали
                 b.floors.sort((a,b) => (a.order || 0) - (b.order || 0));
                 arr = b.floors;
             } else if (type === 'room') {
@@ -281,32 +280,28 @@ module.exports = function(io, socket) {
             }
 
             if (arr) {
-                // Вырезаем элемент
                 const [movedItem] = arr.splice(sourceIndex, 1);
-                // Вставляем на новое место
                 arr.splice(destinationIndex, 0, movedItem);
 
-                // Перезаписываем order, чтобы закрепить порядок
+                // Перезаписываем order
                 arr.forEach((item, index) => {
                     item.order = index;
                 });
 
                 await b.save();
                 await broadcastBuildings();
+                // createLog не пишем на каждое движение, чтобы не спамить
             }
         } catch (e) { console.error(e); }
     });
 
-    // ==========================================
-    // НОВАЯ ЛОГИКА: КОПИРОВАНИЕ
-    // ==========================================
+    // --- НОВОЕ: Копирование ---
     socket.on('copy_item', async ({ type, ids, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
             const b = await Building.findOne({ id: ids.buildingId });
             if (!b) return;
 
-            // Функция глубокого копирования задач с новыми ID
             const copyTasks = (tasks) => tasks.map(t => ({
                 id: genId(),
                 name: t.name,
@@ -314,7 +309,7 @@ module.exports = function(io, socket) {
                 volume: t.volume,
                 unit: t.unit,
                 unit_power: t.unit_power,
-                work_done: false, // Статус сбрасываем
+                work_done: false, // При копировании сбрасываем статус
                 doc_done: false,
                 start_date: null,
                 end_date: null,
@@ -325,7 +320,6 @@ module.exports = function(io, socket) {
                 const f = b.floors.find(x => x.id === ids.floorId);
                 if (f) {
                     const newFloorId = genId();
-                    // Копируем все комнаты в этом этаже
                     const newRooms = f.rooms.map(r => ({
                         id: genId(),
                         name: r.name,
@@ -423,6 +417,7 @@ module.exports = function(io, socket) {
         } catch(e) { console.error(e); }
     });
 
+    // (Старое перемещение по кнопкам - оставим для совместимости с админкой)
     socket.on('move_item', async ({ type, direction, ids, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {

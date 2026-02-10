@@ -91,7 +91,7 @@ function App() {
 
   useEffect(() => {
     socket.on('init_data', (data) => {
-      // Сортируем локально для верности отображения
+      // Сортировка данных при получении (на всякий случай, хоть сервер и сортирует)
       const sorted = data.map(b => ({
           ...b,
           floors: (b.floors || []).sort((a,b) => (a.order||0) - (b.order||0)).map(f => ({
