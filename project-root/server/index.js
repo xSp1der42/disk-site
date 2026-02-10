@@ -50,7 +50,7 @@ const io = new Server(server, {
 });
 
 // ==========================================
-// 1. СНАЧАЛА ГЛОБАЛЬНЫЙ ЭКСПОРТ
+// 1. ГЛОБАЛЬНЫЙ ЭКСПОРТ (FIXED)
 // ==========================================
 app.get('/api/export/global', async (req, res) => {
     try {
@@ -91,8 +91,14 @@ app.get('/api/export/global', async (req, res) => {
         buildings.forEach(b => {
             let bTotal = 0, bWork = 0, bDoc = 0;
 
-            b.floors.forEach(f => {
-                f.rooms.forEach(r => {
+            // Сортировка этажей перед экспортом
+            const sortedFloors = (b.floors || []).sort((x,y) => (x.order || 0) - (y.order || 0));
+
+            sortedFloors.forEach(f => {
+                // Сортировка помещений
+                const sortedRooms = (f.rooms || []).sort((x,y) => (x.order || 0) - (y.order || 0));
+
+                sortedRooms.forEach(r => {
                     r.tasks.forEach(t => {
                         bTotal++;
                         if(t.work_done) bWork++;
@@ -106,13 +112,19 @@ app.get('/api/export/global', async (req, res) => {
                             task: t.name,
                             vol: t.volume,
                             unit: formatUnit(t.unit, t.unit_power),
-                            st_work: t.work_done ? 'ГОТОВО' : '',
-                            st_doc: t.doc_done ? 'СДАНО' : ''
+                            st_work: t.work_done ? 'ГОТОВО' : 'В работе',
+                            st_doc: t.doc_done ? 'СДАНО' : 'Нет акта'
                         });
                         
-                         // Зеленый фон для готовых
-                         if (t.work_done) row.getCell('st_work').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } };
-                         if (t.doc_done) row.getCell('st_doc').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } };
+                        // Цвета для ячеек
+                        const green = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } };
+                        const red = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } };
+
+                        if (t.work_done) row.getCell('st_work').fill = green;
+                        else row.getCell('st_work').fill = red;
+
+                        if (t.doc_done) row.getCell('st_doc').fill = green;
+                        else row.getCell('st_doc').fill = red;
                     });
                 });
             });
@@ -134,7 +146,7 @@ app.get('/api/export/global', async (req, res) => {
         res.end();
 
     } catch (e) {
-        console.error(e);
+        console.error("Export Error:", e);
         res.status(500).send('Ошибка генерации глобального отчета');
     }
 });
@@ -172,8 +184,13 @@ app.get('/api/export/:buildingId', async (req, res) => {
         headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
         headerRow.height = 25;
 
-        building.floors.forEach(floor => {
-            floor.rooms.forEach(room => {
+        // Сортировка перед выводом (чтобы соответствовало порядку на экране)
+        const sortedFloors = (building.floors || []).sort((x,y) => (x.order || 0) - (y.order || 0));
+
+        sortedFloors.forEach(floor => {
+             const sortedRooms = (floor.rooms || []).sort((x,y) => (x.order || 0) - (y.order || 0));
+
+             sortedRooms.forEach(room => {
                 if (room.tasks.length === 0) {
                     worksheet.addRow({ 
                         floor: floor.name, 
@@ -196,10 +213,8 @@ app.get('/api/export/:buildingId', async (req, res) => {
                             doc: task.doc_done ? 'ПОДПИСАНО' : 'Нет акта'
                         });
 
-                        // Логика цветов ячеек (по ТЗ: зеленый - все ок, красный - в процессе/нет)
                         const green = { argb: 'FFC6EFCE' }; // Зеленый
                         const red = { argb: 'FFFFC7CE' };   // Красный
-                        const yellow = { argb: 'FFFFEB9C' }; // Желтый
 
                         // СМР
                         if (task.work_done) {

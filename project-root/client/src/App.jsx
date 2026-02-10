@@ -91,9 +91,18 @@ function App() {
 
   useEffect(() => {
     socket.on('init_data', (data) => {
-      setBuildings(data);
+      // Сортировка данных при получении (на всякий случай, хоть сервер и сортирует)
+      const sorted = data.map(b => ({
+          ...b,
+          floors: (b.floors || []).sort((a,b) => (a.order||0) - (b.order||0)).map(f => ({
+              ...f,
+              rooms: (f.rooms || []).sort((a,b) => (a.order||0) - (b.order||0))
+          }))
+      }));
+      setBuildings(sorted);
+      
       if (selectedRoom) {
-        const b = data.find(b => b.id === selectedRoom.buildingId);
+        const b = sorted.find(b => b.id === selectedRoom.buildingId);
         const f = b?.floors.find(f => f.id === selectedRoom.floorId);
         const r = f?.rooms.find(r => r.id === selectedRoom.room.id);
         if (r) setSelectedRoom({ ...selectedRoom, room: r });
@@ -151,14 +160,16 @@ function App() {
             emitAction('delete_item', { type, ids });
             if (type === 'building') navigate('/dashboard');
       },
-      // НОВОЕ: Перетаскивание
+      
+      // DnD Reorder
       reorderItem: (type, buildingId, floorId, sourceIndex, destinationIndex) => {
           emitAction('reorder_item', { type, buildingId, floorId, sourceIndex, destinationIndex });
       },
+      
       moveItem: (type, direction, ids) => emitAction('move_item', { type, direction, ids }),
       renameItem: (type, ids, newName) => emitAction('rename_item', { type, ids, newName }),
       
-      // НОВОЕ: Копирование
+      // Copy
       copyItem: (type, ids) => emitAction('copy_item', { type, ids }),
       
       createGroup: (name) => emitAction('create_group', { name }),

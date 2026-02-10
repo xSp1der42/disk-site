@@ -185,7 +185,8 @@ module.exports = function(io, socket) {
         try {
             const b = await Building.findOne({ id: buildingId });
             if (b) {
-                b.floors.push({ id: genId(), name: name, rooms: [] });
+                const order = b.floors.length;
+                b.floors.push({ id: genId(), name: name, order: order, rooms: [] });
                 await b.save();
                 await broadcastBuildings();
                 createLog(io, user.username, user.role, 'Структура', `Дом: ${b.name}, Добавлен этаж: ${name}`);
@@ -199,7 +200,8 @@ module.exports = function(io, socket) {
             const b = await Building.findOne({ id: buildingId });
             const f = b?.floors.find(x => x.id === floorId);
             if (f) {
-                f.rooms.push({ id: genId(), name: name, tasks: [] });
+                const order = f.rooms.length;
+                f.rooms.push({ id: genId(), name: name, order: order, tasks: [] });
                 await b.save();
                 await broadcastBuildings();
                 createLog(io, user.username, user.role, 'Структура', `Дом: ${b.name}, Этаж: ${f.name}, Пом: ${name}`);
@@ -207,7 +209,6 @@ module.exports = function(io, socket) {
         } catch(e) { console.error(e); }
     });
 
-    // ОБНОВЛЕНО: Принимаем unit и unit_power
     socket.on('add_task', async ({ buildingId, floorId, roomId, taskName, groupId, volume, unit, unit_power, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
@@ -221,7 +222,7 @@ module.exports = function(io, socket) {
                     groupId: groupId || null,
                     volume: parseFloat(volume) || 0,
                     unit: unit || 'шт',
-                    unit_power: unit_power || '', // Сохраняем степень
+                    unit_power: unit_power || '',
                     work_done: false, 
                     doc_done: false,
                     start_date: null,
@@ -235,7 +236,6 @@ module.exports = function(io, socket) {
         } catch(e) { console.error(e); }
     });
 
-    // ОБНОВЛЕНО: Редактируем unit и unit_power
     socket.on('edit_task', async ({ buildingId, floorId, roomId, taskId, data, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
@@ -254,6 +254,107 @@ module.exports = function(io, socket) {
                 await b.save();
                 await broadcastBuildings();
                 createLog(io, user.username, user.role, 'Редактирование', `Кв: ${r.name}, Изменена работа: ${t.name}`);
+            }
+        } catch (e) { console.error(e); }
+    });
+
+    // --- НОВОЕ: Переупорядочивание Drag & Drop ---
+    socket.on('reorder_item', async ({ type, buildingId, floorId, sourceIndex, destinationIndex, user }) => {
+        if (!user || !canEditStructure(user.role)) return;
+        try {
+            const b = await Building.findOne({ id: buildingId });
+            if (!b) return;
+
+            let arr = null;
+
+            if (type === 'floor') {
+                // Сортируем текущий массив, чтобы индексы соответствовали
+                b.floors.sort((a,b) => (a.order || 0) - (b.order || 0));
+                arr = b.floors;
+            } else if (type === 'room') {
+                const f = b.floors.find(x => x.id === floorId);
+                if (f) {
+                    f.rooms.sort((a,b) => (a.order || 0) - (b.order || 0));
+                    arr = f.rooms;
+                }
+            }
+
+            if (arr) {
+                const [movedItem] = arr.splice(sourceIndex, 1);
+                arr.splice(destinationIndex, 0, movedItem);
+
+                // Перезаписываем order
+                arr.forEach((item, index) => {
+                    item.order = index;
+                });
+
+                await b.save();
+                await broadcastBuildings();
+                // createLog не пишем на каждое движение, чтобы не спамить
+            }
+        } catch (e) { console.error(e); }
+    });
+
+    // --- НОВОЕ: Копирование ---
+    socket.on('copy_item', async ({ type, ids, user }) => {
+        if (!user || !canEditStructure(user.role)) return;
+        try {
+            const b = await Building.findOne({ id: ids.buildingId });
+            if (!b) return;
+
+            const copyTasks = (tasks) => tasks.map(t => ({
+                id: genId(),
+                name: t.name,
+                groupId: t.groupId,
+                volume: t.volume,
+                unit: t.unit,
+                unit_power: t.unit_power,
+                work_done: false, // При копировании сбрасываем статус
+                doc_done: false,
+                start_date: null,
+                end_date: null,
+                comments: []
+            }));
+
+            if (type === 'floor') {
+                const f = b.floors.find(x => x.id === ids.floorId);
+                if (f) {
+                    const newFloorId = genId();
+                    const newRooms = f.rooms.map(r => ({
+                        id: genId(),
+                        name: r.name,
+                        order: r.order,
+                        tasks: copyTasks(r.tasks)
+                    }));
+                    
+                    b.floors.push({
+                        id: newFloorId,
+                        name: `${f.name} (Копия)`,
+                        order: b.floors.length,
+                        rooms: newRooms
+                    });
+                    
+                    await b.save();
+                    await broadcastBuildings();
+                    createLog(io, user.username, user.role, 'Копирование', `Скопирован этаж: ${f.name}`);
+                }
+            } else if (type === 'room') {
+                const f = b.floors.find(x => x.id === ids.floorId);
+                if (f) {
+                    const r = f.rooms.find(x => x.id === ids.roomId);
+                    if (r) {
+                        const newRoom = {
+                            id: genId(),
+                            name: `${r.name} (Копия)`,
+                            order: f.rooms.length,
+                            tasks: copyTasks(r.tasks)
+                        };
+                        f.rooms.push(newRoom);
+                        await b.save();
+                        await broadcastBuildings();
+                        createLog(io, user.username, user.role, 'Копирование', `Скопировано помещение: ${r.name}`);
+                    }
+                }
             }
         } catch (e) { console.error(e); }
     });
@@ -316,6 +417,7 @@ module.exports = function(io, socket) {
         } catch(e) { console.error(e); }
     });
 
+    // (Старое перемещение по кнопкам - оставим для совместимости с админкой)
     socket.on('move_item', async ({ type, direction, ids, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
@@ -337,7 +439,6 @@ module.exports = function(io, socket) {
 
                     await buildings[idx].save();
                     await buildings[idx - 1].save();
-
                 } else if (direction === 'down' && idx < buildings.length - 1) {
                     const temp = buildings[idx].order;
                     buildings[idx].order = buildings[idx + 1].order;
@@ -352,23 +453,7 @@ module.exports = function(io, socket) {
                     await buildings[idx + 1].save();
                 }
                 await broadcastBuildings();
-                return; 
             }
-
-            const b = await Building.findOne({ id: ids.buildingId });
-            if (!b) return;
-
-            const swap = (arr, i1, i2) => { [arr[i1], arr[i2]] = [arr[i2], arr[i1]]; };
-
-            if (type === 'floor') {
-                const idx = b.floors.findIndex(f => f.id === ids.floorId);
-                if (idx === -1) return;
-                if (direction === 'up' && idx > 0) swap(b.floors, idx, idx - 1);
-                else if (direction === 'down' && idx < b.floors.length - 1) swap(b.floors, idx, idx + 1);
-            }
-            
-            await b.save();
-            await broadcastBuildings();
         } catch(e) { console.error(e); }
     });
 
