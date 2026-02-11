@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Pencil, Trash2, Layers, Hammer, FileText, PlusCircle, Calendar, MessageSquare, Clock, Send, X, Search, Package, Plus } from 'lucide-react';
-import { getRoomStatus } from '../utils/helpers';
 import { ROLES_CONFIG } from '../utils/constants';
 import socket from '../utils/socket';
 
@@ -10,7 +9,7 @@ const DatePickerPopup = ({ task, onSave, onClose }) => {
     const [start, setStart] = useState(task.start_date ? new Date(task.start_date).toISOString().split('T')[0] : '');
     const [end, setEnd] = useState(task.end_date ? new Date(task.end_date).toISOString().split('T')[0] : '');
     return (
-        <div style={{ position: 'absolute', top: 40, right: 0, zIndex: 30, background: 'var(--bg-card)', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-lg)', borderRadius: 12, padding: 16, width: 260 }} onClick={e => e.stopPropagation()}>
+        <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 100, background: 'var(--bg-card)', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-lg)', borderRadius: 12, padding: 16, width: 260, marginTop: 8 }} onClick={e => e.stopPropagation()}>
             <div style={{marginBottom: 10}}><label style={{fontSize:'0.75rem', color:'var(--text-muted)'}}>Начало:</label><input type="date" className="sm-input" style={{width:'100%'}} value={start} onChange={e => setStart(e.target.value)} /></div>
             <div style={{marginBottom: 16}}><label style={{fontSize:'0.75rem', color:'var(--text-muted)'}}>Дедлайн:</label><input type="date" className="sm-input" style={{width:'100%'}} value={end} onChange={e => setEnd(e.target.value)} /></div>
             <div style={{display:'flex', gap: 8}}><button className="action-btn primary" style={{flex:1, padding: '8px'}} onClick={() => onSave(start, end)}>Сохранить</button><button className="action-btn secondary" style={{flex:1, padding: '8px'}} onClick={() => onSave(null, null)}>Сброс</button></div>
@@ -24,7 +23,7 @@ const ChatPopup = ({ task, currentUser, onAddComment, onClose }) => {
     useEffect(() => { if (chatBodyRef.current) chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight; }, [task.comments]);
     const handleSend = (e) => { e.preventDefault(); if (!text.trim()) return; onAddComment(text); setText(''); };
     return (
-        <div style={{ position: 'absolute', top: 40, right: -100, zIndex: 35, background: 'var(--bg-card)', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-lg)', borderRadius: 12, width: 320, height: 400, display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+        <div style={{ position: 'absolute', top: '100%', right: -50, zIndex: 100, background: 'var(--bg-card)', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-lg)', borderRadius: 12, width: 320, height: 400, display: 'flex', flexDirection: 'column', marginTop: 8 }} onClick={e => e.stopPropagation()}>
             <div style={{padding: '12px 16px', borderBottom: '1px solid var(--border-color)', display:'flex', justifyContent:'space-between', alignItems:'center'}}><span style={{fontWeight:600}}>Чат</span><button onClick={onClose} style={{background:'none', border:'none', cursor:'pointer'}}><X size={16}/></button></div>
             <div ref={chatBodyRef} style={{flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--bg-body)'}}>{(!task.comments || task.comments.length === 0) && <div style={{textAlign:'center', color:'var(--text-muted)', fontSize:'0.85rem', marginTop: 20}}>Нет сообщений.</div>}{task.comments?.map(c => (<div key={c.id} style={{ alignSelf: (c.author.includes(currentUser.surname) || c.role === currentUser.role) ? 'flex-end' : 'flex-start', maxWidth: '85%', background: (c.author.includes(currentUser.surname) || c.role === currentUser.role) ? 'var(--accent-primary)' : 'var(--bg-card)', color: (c.author.includes(currentUser.surname) || c.role === currentUser.role) ? 'white' : 'var(--text-main)', padding: '8px 12px', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-color)' }}><div style={{fontSize:'0.7rem', fontWeight:700, opacity: 0.8, marginBottom: 2}}>{c.author}</div><div style={{fontSize:'0.9rem'}}>{c.text}</div></div>))}</div>
             <form onSubmit={handleSend} style={{padding: 12, borderTop: '1px solid var(--border-color)', display:'flex', gap: 8, background: 'var(--bg-card)'}}><input className="sm-input" style={{flex:1}} placeholder="Сообщение..." value={text} onChange={e => setText(e.target.value)} /><button type="submit" className="action-btn primary" style={{padding: '0 12px'}} disabled={!text.trim()}><Send size={16}/></button></form>
@@ -32,7 +31,6 @@ const ChatPopup = ({ task, currentUser, onAddComment, onClose }) => {
     );
 };
 
-// COMPONENT
 const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, actions, groups, sysActions }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [filterGroupId, setFilterGroupId] = useState('');
@@ -42,18 +40,21 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
     const [newSMR, setNewSMR] = useState({ name: '', groupId: '', volume: '', unit: 'м²' });
 
     // MTR Add State
-    const [addingMTRForTask, setAddingMTRForTask] = useState(null); // taskId
+    const [addingMTRForTask, setAddingMTRForTask] = useState(null); 
     const [newMTR, setNewMTR] = useState({ name: '', coefficient: '1', unit: 'шт' });
     
     // Edit State
     const [editingTask, setEditingTask] = useState(null);
     const [editTaskData, setEditTaskData] = useState({ name: '', groupId: '', volume: '', unit: '' });
     
+    // Popups
     const [activeDatePopup, setActiveDatePopup] = useState(null);
     const [activeChatPopup, setActiveChatPopup] = useState(null);
     const canEditDates = ['admin', 'architect'].includes(currentUser.role);
 
-    // Filtering
+    // Forces re-render when reading messages
+    const [readState, setReadState] = useState(0); 
+
     const filteredTasks = useMemo(() => {
         let tasks = selectedRoom.room.tasks || [];
         if (filterGroupId) tasks = tasks.filter(t => (t.groupId || 'uncategorized') === filterGroupId);
@@ -72,7 +73,6 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
         return result;
     }, [filteredTasks, groups]);
 
-    // Handlers
     const handleAddSMR = (e) => {
         e.preventDefault();
         actions.addTask(selectedRoom.buildingId, selectedRoom.contractId, selectedRoom.floorId, selectedRoom.room.id, {
@@ -124,17 +124,36 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
     const handleRenameRoom = () => sysActions.prompt("Переименование", "Новое название:", (newName) => { if(newName !== selectedRoom.room.name) actions.renameItem('room', {buildingId: selectedRoom.buildingId, contractId: selectedRoom.contractId, floorId: selectedRoom.floorId, roomId: selectedRoom.room.id}, newName); }, selectedRoom.room.name);
     
     const handleSaveDates = (taskId, start, end) => { actions.updateTaskDates(selectedRoom.buildingId, selectedRoom.contractId, selectedRoom.floorId, selectedRoom.room.id, taskId, { start, end }); setActiveDatePopup(null); };
-    const handleAddComment = (taskId, text) => { actions.addTaskComment(selectedRoom.buildingId, selectedRoom.contractId, selectedRoom.floorId, selectedRoom.room.id, taskId, text); markAsRead(taskId); };
+    
+    const handleAddComment = (taskId, text) => { 
+        actions.addTaskComment(selectedRoom.buildingId, selectedRoom.contractId, selectedRoom.floorId, selectedRoom.room.id, taskId, text); 
+        markAsRead(taskId); 
+    };
     
     const formatDate = (d) => d ? new Date(d).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) : null;
-    const markAsRead = (taskId) => localStorage.setItem(`read_comments_${taskId}`, new Date().toISOString());
+    
+    const markAsRead = (taskId) => {
+        localStorage.setItem(`read_comments_${taskId}`, new Date().toISOString());
+        setReadState(prev => prev + 1); // Trigger re-render to update UI (remove red dot)
+    };
+
     const hasUnread = (task) => {
         if (!task.comments || task.comments.length === 0) return false;
         const lastRead = localStorage.getItem(`read_comments_${task.id}`);
         if (!lastRead) return true;
+        // Strict comparison: if last comment is newer than last read
         return new Date(task.comments[task.comments.length-1].timestamp) > new Date(lastRead);
     }
-    const handleOpenChat = (taskId) => { if (activeChatPopup === taskId) setActiveChatPopup(null); else { setActiveDatePopup(null); setActiveChatPopup(taskId); markAsRead(taskId); } };
+
+    const handleOpenChat = (taskId) => { 
+        if (activeChatPopup === taskId) {
+            setActiveChatPopup(null);
+        } else { 
+            setActiveDatePopup(null); 
+            setActiveChatPopup(taskId); 
+            markAsRead(taskId); 
+        } 
+    };
 
     return (
         <div className="modal-backdrop" onClick={() => setSelectedRoom(null)}>
@@ -225,13 +244,19 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
                                                             )}
                                                         </td>
                                                         <td style={{textAlign:'center'}}>
-                                                            <div style={{display:'flex', gap: 4, justifyContent:'center'}}>
-                                                                <button className="move-btn" disabled={!canEditDates} style={{opacity: canEditDates?1:0.3}} onClick={(e) => { e.stopPropagation(); setActiveDatePopup(activeDatePopup === task.id ? null : task.id); }}><Calendar size={18}/></button>
+                                                            {/* WRAPPER FOR POPUPS with position: relative */}
+                                                            <div style={{display:'flex', gap: 4, justifyContent:'center', position: 'relative'}}>
+                                                                <button className="move-btn" disabled={!canEditDates} style={{opacity: canEditDates?1:0.3}} onClick={(e) => { e.stopPropagation(); setActiveChatPopup(null); setActiveDatePopup(activeDatePopup === task.id ? null : task.id); }}><Calendar size={18}/></button>
+                                                                
+                                                                {/* DATE POPUP */}
                                                                 {activeDatePopup === task.id && <DatePickerPopup task={task} onSave={(s, e) => handleSaveDates(task.id, s, e)} onClose={() => setActiveDatePopup(null)} />}
-                                                                <button className="move-btn" onClick={(e) => { e.stopPropagation(); handleOpenChat(task.id); }}>
+                                                                
+                                                                <button className="move-btn" style={{position:'relative'}} onClick={(e) => { e.stopPropagation(); handleOpenChat(task.id); }}>
                                                                     <MessageSquare size={18}/>
                                                                     {hasUnread(task) && <span style={{position:'absolute', top:-2, right:-2, width:8, height:8, background:'#ef4444', borderRadius:'50%', border: '1px solid white'}}></span>}
                                                                 </button>
+                                                                
+                                                                {/* CHAT POPUP */}
                                                                 {activeChatPopup === task.id && <ChatPopup task={task} currentUser={currentUser} onAddComment={(text) => handleAddComment(task.id, text)} onClose={() => setActiveChatPopup(null)} />}
                                                             </div>
                                                         </td>
@@ -244,7 +269,7 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
                                                         {hasEditRights && <td style={{textAlign:'center'}}><button className="icon-btn-danger" onClick={() => handleDeleteTask(task.id)}><Trash2 size={16}/></button></td>}
                                                     </tr>
 
-                                                    {/* MTR ROWS (NESTED) */}
+                                                    {/* MTR ROWS */}
                                                     {task.materials && task.materials.map(mat => (
                                                         <tr key={mat.id} style={{background: '#fef9c3'}}>
                                                             <td style={{paddingLeft: 40}}>
@@ -298,7 +323,7 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
                     </table>
                 </div>
 
-                {/* FOOTER - ADD SMR */}
+                {/* FOOTER */}
                 {hasEditRights && (
                     <div className="modal-footer">
                         {!isAddingSMR ? (

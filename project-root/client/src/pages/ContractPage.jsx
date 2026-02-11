@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FileText, ArrowLeft, PlusCircle, Pencil, Trash2, PieChart, Copy, GripVertical, Move } from 'lucide-react';
+import { FileText, ArrowLeft, PlusCircle, Pencil, Trash2, PieChart, Copy, GripVertical, Move, Filter, X } from 'lucide-react';
 import { getRoomStatus } from '../utils/helpers';
 
-const ContractPage = ({ buildings, user, actions, setSelectedRoom, sysActions }) => {
+const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysActions }) => {
     const { buildingId, contractId } = useParams();
     const navigate = useNavigate();
     
@@ -11,15 +11,19 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, sysActions })
     const contract = building?.contracts.find(c => c.id === contractId);
     const hasEditRights = ['admin', 'architect'].includes(user.role);
 
-    // DnD State
+    // DnD & Filter State
     const [isReorderingMode, setIsReorderingMode] = useState(false);
     const [draggedItem, setDraggedItem] = useState(null); 
+    const [filterGroupId, setFilterGroupId] = useState('');
 
+    // Статистика по Договору (шапка)
     const stats = useMemo(() => {
         if (!contract) return null;
         let total = 0, work = 0, doc = 0, vol = 0;
         contract.floors.forEach(f => f.rooms.forEach(r => r.tasks.forEach(t => {
-            total++;
+            // Для общей статистики считаем задачи целиком или галочки - как вам удобнее.
+            // Здесь оставил по количеству задач для "Всего", но прогресс по галочкам
+            total++; 
             if(t.work_done) work++;
             if(t.doc_done) doc++;
             vol += (t.volume || 0);
@@ -29,6 +33,7 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, sysActions })
 
     if (!contract) return <div className="content-area">Договор не найден</div>;
 
+    // --- Actions ---
     const handleAddFloor = () => {
         sysActions.prompt("Новый этаж", "Название (например: 2 Этаж):", (name) => {
             actions.addFloor(building.id, contract.id, name);
@@ -103,7 +108,16 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, sysActions })
                 </div>
                 
                 <div className="control-actions">
-                    {/* Фильтр убран отсюда */}
+                     <div className="filter-dropdown-container">
+                        <Filter size={16} style={{marginRight: 8, color: 'var(--text-muted)'}} />
+                        <select className="filter-select" value={filterGroupId} onChange={e => setFilterGroupId(e.target.value)}>
+                            <option value="">Все работы</option>
+                            {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                            <option value="uncategorized">Без группы</option>
+                        </select>
+                        {filterGroupId && <button className="icon-btn-danger" onClick={() => setFilterGroupId('')}><X size={14}/></button>}
+                    </div>
+
                     <button className="action-btn secondary" onClick={() => navigate(`/dashboard/${building.id}`)}>
                         <ArrowLeft size={16} /> Назад
                     </button>
@@ -124,15 +138,15 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, sysActions })
             <div style={{padding: '0 32px', marginTop: 24, display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap: 20}}>
                 <div style={{background:'var(--bg-card)', padding: 20, borderRadius: 12, border: '1px solid var(--border-color)', display:'flex', alignItems:'center', gap: 15}}>
                     <div style={{background:'var(--bg-active)', padding: 10, borderRadius: '50%'}}><PieChart size={24} color="var(--accent-primary)"/></div>
-                    <div><div style={{fontSize:'0.8rem', color:'var(--text-muted)'}}>Всего СМР</div><div style={{fontSize:'1.2rem', fontWeight:700}}>{stats.total}</div></div>
+                    <div><div style={{fontSize:'0.8rem', color:'var(--text-muted)'}}>Всего задач</div><div style={{fontSize:'1.2rem', fontWeight:700}}>{stats.total}</div></div>
                 </div>
                 <div style={{background:'var(--bg-card)', padding: 20, borderRadius: 12, border: '1px solid var(--border-color)', display:'flex', alignItems:'center', gap: 15}}>
                      <div style={{background:'var(--status-green-bg)', padding: 10, borderRadius: '50%'}}><PieChart size={24} color="#166534"/></div>
-                    <div><div style={{fontSize:'0.8rem', color:'var(--text-muted)'}}>Выполнено</div><div style={{fontSize:'1.2rem', fontWeight:700, color:'#166534'}}>{stats.work}</div></div>
+                    <div><div style={{fontSize:'0.8rem', color:'var(--text-muted)'}}>СМР Готово</div><div style={{fontSize:'1.2rem', fontWeight:700, color:'#166534'}}>{stats.work}</div></div>
                 </div>
                 <div style={{background:'var(--bg-card)', padding: 20, borderRadius: 12, border: '1px solid var(--border-color)', display:'flex', alignItems:'center', gap: 15}}>
                      <div style={{background:'var(--status-orange-bg)', padding: 10, borderRadius: '50%'}}><PieChart size={24} color="#c2410c"/></div>
-                    <div><div style={{fontSize:'0.8rem', color:'var(--text-muted)'}}>Сдано ИД</div><div style={{fontSize:'1.2rem', fontWeight:700, color:'#c2410c'}}>{stats.doc}</div></div>
+                    <div><div style={{fontSize:'0.8rem', color:'var(--text-muted)'}}>ИД Сдано</div><div style={{fontSize:'1.2rem', fontWeight:700, color:'#c2410c'}}>{stats.doc}</div></div>
                 </div>
                  <div style={{background:'var(--bg-card)', padding: 20, borderRadius: 12, border: '1px solid var(--border-color)', display:'flex', alignItems:'center', gap: 15}}>
                      <div style={{background:'#e0f2fe', padding: 10, borderRadius: '50%'}}><PieChart size={24} color="#0284c7"/></div>
@@ -168,31 +182,54 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, sysActions })
                                 )}
                             </div>
                             <div className="rooms-grid">
-                                {floor.rooms.map((room, roomIndex) => (
-                                    <div 
-                                        key={room.id} 
-                                        className={`room-item ${getRoomStatus(room)}`}
-                                        onClick={() => setSelectedRoom({ buildingId: building.id, contractId: contract.id, floorId: floor.id, room })}
-                                        draggable={isReorderingMode}
-                                        onDragStart={(e) => onDragStart(e, 'room', room, roomIndex, floor.id)}
-                                        onDragEnd={onDragEnd}
-                                        onDragOver={(e) => { if(isReorderingMode) e.preventDefault(); }}
-                                        onDrop={(e) => onDrop(e, 'room', roomIndex, floor.id)}
-                                        style={{cursor: isReorderingMode ? 'grab' : 'pointer'}}
-                                    >
-                                        {hasEditRights && !isReorderingMode && (
-                                            <div style={{position:'absolute', top:4, right:4, opacity:0.6}} onClick={(e) => handleCopyRoom(floor.id, room.id, e)}><Copy size={14}/></div>
-                                        )}
-                                        <div className="room-name">{room.name}</div>
-                                        <div className="room-stats">
-                                            {(() => {
-                                                const tasks = room.tasks || [];
-                                                const done = tasks.filter(t => t.work_done && t.doc_done).length;
-                                                return tasks.length > 0 ? `${done}/${tasks.length}` : 'Нет работ';
-                                            })()}
+                                {floor.rooms.map((room, roomIndex) => {
+                                    const statusClass = getRoomStatus(room, filterGroupId);
+                                    let isHighlighted = false;
+                                    if (filterGroupId) isHighlighted = room.tasks.some(t => (t.groupId || 'uncategorized') === filterGroupId);
+
+                                    return (
+                                        <div 
+                                            key={room.id} 
+                                            className={`room-item ${statusClass} ${isHighlighted ? 'filtered-highlight' : ''}`}
+                                            onClick={() => setSelectedRoom({ buildingId: building.id, contractId: contract.id, floorId: floor.id, room })}
+                                            draggable={isReorderingMode}
+                                            onDragStart={(e) => onDragStart(e, 'room', room, roomIndex, floor.id)}
+                                            onDragEnd={onDragEnd}
+                                            onDragOver={(e) => { if(isReorderingMode) e.preventDefault(); }}
+                                            onDrop={(e) => onDrop(e, 'room', roomIndex, floor.id)}
+                                            style={{cursor: isReorderingMode ? 'grab' : 'pointer'}}
+                                        >
+                                            {hasEditRights && !isReorderingMode && (
+                                                <div style={{position:'absolute', top:4, right:4, opacity:0.6}} onClick={(e) => handleCopyRoom(floor.id, room.id, e)}><Copy size={14}/></div>
+                                            )}
+                                            <div className="room-name">{room.name}</div>
+                                            <div className="room-stats">
+                                                {/* ИСПРАВЛЕННАЯ ЛОГИКА 0/2 */}
+                                                {(() => {
+                                                    const tasks = room.tasks || [];
+                                                    const filtered = filterGroupId 
+                                                        ? tasks.filter(t => (t.groupId || 'uncategorized') === filterGroupId) 
+                                                        : tasks;
+                                                    
+                                                    // Считаем общее количество "галочек" (СМР + ИД)
+                                                    const totalPoints = filtered.length * 2;
+                                                    
+                                                    // Считаем выполненные галочки
+                                                    let donePoints = 0;
+                                                    filtered.forEach(t => {
+                                                        if (t.work_done) donePoints++;
+                                                        if (t.doc_done) donePoints++;
+                                                    });
+
+                                                    // Если работ нет
+                                                    if (totalPoints === 0) return 'Нет работ';
+
+                                                    return `${donePoints}/${totalPoints}`;
+                                                })()}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                                 {floor.rooms.length === 0 && <div style={{width:'100%', textAlign:'center', padding:10, color:'var(--text-muted)'}}>Пусто</div>}
                             </div>
                         </div>
