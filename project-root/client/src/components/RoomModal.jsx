@@ -1,5 +1,3 @@
---- START OF FILE RoomModal.jsx ---
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Pencil, Trash2, Layers, Hammer, FileText, PlusCircle, Calendar, MessageSquare, Clock, Send, X, Search, Plus, Paperclip, File as FileIcon } from 'lucide-react';
 import socket from '../utils/socket';
