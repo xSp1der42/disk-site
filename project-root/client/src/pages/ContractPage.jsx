@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FileText, Filter, ArrowLeft, PlusCircle, Pencil, Trash2, Download, PieChart, Copy, GripVertical, Move, X } from 'lucide-react';
+import { FileText, Filter, ArrowLeft, PlusCircle, Pencil, Trash2, PieChart, Copy, GripVertical, Move, X } from 'lucide-react';
 import { getRoomStatus } from '../utils/helpers';
 
 const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysActions }) => {
@@ -16,6 +16,7 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysAc
     const [draggedItem, setDraggedItem] = useState(null); 
     const [filterGroupId, setFilterGroupId] = useState('');
 
+    // Статистика по Договору
     const stats = useMemo(() => {
         if (!contract) return null;
         let total = 0, work = 0, doc = 0, vol = 0;
@@ -87,7 +88,6 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysAc
         if (!isReorderingMode || !draggedItem || draggedItem.type !== type) return;
         e.preventDefault(); e.stopPropagation();
         
-        // Block dropping into wrong parent
         if (type === 'room' && targetParentId !== draggedItem.parentId) return;
         if (draggedItem.index === targetIndex) return;
 
@@ -204,11 +204,19 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysAc
                                             )}
                                             <div className="room-name">{room.name}</div>
                                             <div className="room-stats">
+                                                {/* ВОТ ЗДЕСЬ ВОЗВРАЩЕН СТАРЫЙ ФОРМАТ ОТОБРАЖЕНИЯ */}
                                                 {(() => {
                                                     const tasks = room.tasks.filter(t => t.type === 'smr');
-                                                    const filtered = filterGroupId ? tasks.filter(t => (t.groupId || 'uncategorized') === filterGroupId) : tasks;
+                                                    const filtered = filterGroupId 
+                                                        ? tasks.filter(t => (t.groupId || 'uncategorized') === filterGroupId) 
+                                                        : tasks;
                                                     const done = filtered.filter(t => t.work_done && t.doc_done).length;
-                                                    return `${done}/${filtered.length}`;
+                                                    
+                                                    // Если фильтр включен или работ > 0, показываем дробь
+                                                    if (filtered.length > 0) {
+                                                        return `${done}/${filtered.length}`;
+                                                    }
+                                                    return 'Нет работ';
                                                 })()}
                                             </div>
                                         </div>

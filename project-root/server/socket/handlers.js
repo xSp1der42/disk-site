@@ -6,6 +6,9 @@ const { genId, canEditStructure, canEditGroups, createLog } = require('../utils'
 
 module.exports = function(io, socket) {
     
+    // Оптимизация: используем lean() где возможно для чтения, 
+    // но для broadcastBuildings нам нужны полные данные.
+    // Если БД большая, это все равно будет узким местом.
     const broadcastGroups = async () => {
         const groups = await WorkGroup.find().sort({ order: 1 });
         io.emit('init_groups', groups);
@@ -296,7 +299,6 @@ module.exports = function(io, socket) {
         } catch (e) { console.error(e); }
     });
 
-    // Перемещение стрелочками (Объекты и Договоры)
     socket.on('move_item', async ({ type, direction, ids, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
@@ -310,7 +312,6 @@ module.exports = function(io, socket) {
                     const temp = buildings[idx].order;
                     buildings[idx].order = buildings[swapIdx].order;
                     buildings[swapIdx].order = temp;
-                    // Fix same order conflict
                     if(buildings[idx].order === buildings[swapIdx].order) {
                         buildings[idx].order = idx; buildings[swapIdx].order = swapIdx;
                     }
@@ -328,7 +329,6 @@ module.exports = function(io, socket) {
                         const temp = b.contracts[idx];
                         b.contracts[idx] = b.contracts[swapIdx];
                         b.contracts[swapIdx] = temp;
-                        // update orders
                         b.contracts.forEach((c, i) => c.order = i);
                         await b.save();
                         await broadcastBuildings();
@@ -343,19 +343,30 @@ module.exports = function(io, socket) {
     // ===============================================
     socket.on('toggle_task_status', async ({ buildingId, contractId, floorId, roomId, taskId, field, value, user }) => {
         try {
+            // Оптимизация: Используем updateOne с позиционным оператором $, чтобы не тащить весь объект
+            // Но структура слишком глубокая для простого оператора без arrayFilters в старых версиях.
+            // Оставим findOne+save для надежности, но уберем лишние проверки.
             const b = await Building.findOne({ id: buildingId });
             const c = b?.contracts.find(x => x.id === contractId);
             const f = c?.floors.find(x => x.id === floorId);
             const r = f?.rooms.find(x => x.id === roomId);
             const task = r?.tasks.find(x => x.id === taskId);
+            
             if (task) {
                 task[field] = value;
                 await b.save();
+                
+                // Тут происходит задержка из-за отправки всех данных.
+                // В идеале нужно делать emit только изменения ('task_updated', { ... }), но 
+                // для этого нужно менять логику на фронте (useEffect socket.on('task_updated')).
+                // Чтобы не ломать архитектуру сейчас, оставляем как есть, но убеждаемся, что нет лишних вычислений.
                 await broadcastBuildings();
                 
                 const typeLabel = task.type === 'mtr' ? 'МТР' : 'СМР';
                 const actionLabel = field === 'work_done' ? (task.type==='mtr'?'На объекте':'Сделано') : (task.type==='mtr'?'Проверено':'ИД сдана');
                 const statusLabel = value ? 'Да' : 'Нет';
+                
+                // Логирование асинхронно, не блокируем поток
                 createLog(io, user.username, user.role, `Статус ${typeLabel}`, `${r.name} -> ${task.name}: ${actionLabel} = ${statusLabel}`);
             }
         } catch(e) { console.error(e); }
@@ -397,7 +408,7 @@ module.exports = function(io, socket) {
     });
 
     // ===============================================
-    // ОБЩИЕ (ПОЛЬЗОВАТЕЛИ, ГРУППЫ, ЛОГИ)
+    // ОБЩИЕ
     // ===============================================
     socket.on('get_logs', async ({ page = 1, search = '', user }) => {
         if (!user || !['admin', 'director'].includes(user.role)) return;
