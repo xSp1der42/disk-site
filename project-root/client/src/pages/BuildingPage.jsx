@@ -1,24 +1,34 @@
 import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Building2, Filter, ArrowLeft, PlusCircle, Pencil, Trash2, Download, PieChart, Copy, GripVertical, Move } from 'lucide-react';
+import { Building2, Filter, ArrowLeft, PlusCircle, Pencil, Trash2, Download, PieChart, Copy, GripVertical, Move, FileText, Briefcase } from 'lucide-react';
 import { getRoomStatus } from '../utils/helpers';
 
-const BuildingPage = ({ buildings, user, actions, setSelectedRoom, filterGroupId, setFilterGroupId, groups, sysActions }) => {
+const BuildingPage = ({ 
+    buildings, user, actions, setSelectedRoom, 
+    filterGroupId, setFilterGroupId, 
+    filterContractId, setFilterContractId,
+    filterType, setFilterType,
+    groups, sysActions 
+}) => {
     const { id } = useParams();
     const navigate = useNavigate();
     const building = buildings.find(b => b.id === id);
     const hasEditRights = ['admin', 'architect'].includes(user.role);
 
-    // Состояние режима перемещения (Drag and Drop)
+    // Состояние режима перемещения
     const [isReorderingMode, setIsReorderingMode] = useState(false);
+    // Управление договорами (просто список в попапе или прямо здесь)
+    const [showContractsModal, setShowContractsModal] = useState(false);
 
     // DnD State
-    const [draggedItem, setDraggedItem] = useState(null); // { type: 'floor' | 'room', id, index, parentId? }
+    const [draggedItem, setDraggedItem] = useState(null);
 
     const stats = useMemo(() => {
         if (!building) return null;
         let total = 0, work = 0, doc = 0, vol = 0;
         building.floors.forEach(f => f.rooms.forEach(r => r.tasks.forEach(t => {
+            // Учитываем фильтры при расчете статистики? 
+            // Пока считаем общую статистику объекта, чтобы цифры не прыгали.
             total++;
             if(t.work_done) work++;
             if(t.doc_done) doc++;
@@ -77,7 +87,19 @@ const BuildingPage = ({ buildings, user, actions, setSelectedRoom, filterGroupId
         window.open(`${apiUrl}/api/export/${building.id}?username=${user.username}&role=${user.role}`, '_blank');
     };
 
-    // --- DnD Logic (Работает только если isReorderingMode === true) ---
+    // Управление Договорами
+    const handleAddContract = () => {
+        sysActions.prompt("Новый договор", "Название пакета/договора:", (name) => {
+            actions.createContract(building.id, name);
+        });
+    };
+    const handleDeleteContract = (cid, cname) => {
+        sysActions.confirm("Удаление договора", `Удалить договор "${cname}"? Работы потеряют привязку.`, () => {
+            actions.deleteContract(building.id, cid);
+        });
+    };
+
+    // --- DnD Logic ---
     const onDragStart = (e, type, item, index, parentId = null) => {
         if (!isReorderingMode) return;
         e.stopPropagation();
@@ -102,10 +124,7 @@ const BuildingPage = ({ buildings, user, actions, setSelectedRoom, filterGroupId
 
         if (!draggedItem) return;
         if (draggedItem.type !== type) return; 
-        
-        // Для комнат: разрешаем перенос только внутри одного этажа (для упрощения, как просили "между собой")
         if (type === 'room' && targetParentId !== draggedItem.parentId) return; 
-
         if (draggedItem.index === targetIndex) return;
 
         actions.reorderItem(type, building.id, targetParentId, draggedItem.index, targetIndex);
@@ -125,18 +144,48 @@ const BuildingPage = ({ buildings, user, actions, setSelectedRoom, filterGroupId
                 </div>
                 
                 <div className="control-actions">
-                     <div className="filter-dropdown-container">
+                    {/* ФИЛЬТРЫ */}
+                    <div className="filter-dropdown-container">
                         <Filter size={16} style={{marginRight: 8, color: 'var(--text-muted)'}} />
+                        
+                        {/* 1. Группа работ */}
                         <select 
                             className="filter-select"
                             value={filterGroupId} 
                             onChange={e => setFilterGroupId(e.target.value)}
+                            style={{marginRight: 8}}
                         >
-                            <option value="">Все работы (Общий статус)</option>
+                            <option value="">Все группы</option>
                             {groups.map(g => (
                                 <option key={g.id} value={g.id}>{g.name}</option>
                             ))}
                             <option value="uncategorized">Без группы</option>
+                        </select>
+
+                        {/* 2. Пакет / Договор */}
+                        <select 
+                            className="filter-select"
+                            value={filterContractId} 
+                            onChange={e => setFilterContractId(e.target.value)}
+                            style={{marginRight: 8, borderLeft:'1px solid var(--border-color)', paddingLeft:8}}
+                        >
+                            <option value="">Все договоры</option>
+                            {building.contracts?.map(c => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                            <option value="uncategorized">Без договора</option>
+                        </select>
+
+                        {/* 3. Тип: СМР / МТР */}
+                        <select 
+                            className="filter-select"
+                            value={filterType} 
+                            onChange={e => setFilterType(e.target.value)}
+                            style={{borderLeft:'1px solid var(--border-color)', paddingLeft:8}}
+                        >
+                            <option value="all">Всё (СМР + МТР)</option>
+                            <option value="smr">Только Работы (СМР)</option>
+                            <option value="mtr">Только Материалы (МТР)</option>
                         </select>
                     </div>
 
@@ -150,7 +199,11 @@ const BuildingPage = ({ buildings, user, actions, setSelectedRoom, filterGroupId
 
                     {hasEditRights && (
                         <>
-                             {/* Кнопка включения режима перемещения */}
+                             {/* Кнопка управления Договорами */}
+                             <button className="action-btn secondary" onClick={() => setShowContractsModal(true)}>
+                                <Briefcase size={18}/> Договоры
+                            </button>
+
                             <button 
                                 className={`action-btn ${isReorderingMode ? 'primary' : 'secondary'}`} 
                                 onClick={() => setIsReorderingMode(!isReorderingMode)}
@@ -166,6 +219,37 @@ const BuildingPage = ({ buildings, user, actions, setSelectedRoom, filterGroupId
                     )}
                 </div>
             </div>
+
+            {/* Contracts Modal (Simple Popup) */}
+            {showContractsModal && (
+                <div className="modal-backdrop" onClick={() => setShowContractsModal(false)}>
+                    <div className="modal-window" style={{width: 500, height: 'auto', padding: 24}} onClick={e => e.stopPropagation()}>
+                        <h3 style={{marginTop:0}}>Управление договорами</h3>
+                        <div style={{marginBottom: 16, display:'flex', gap: 8}}>
+                            <button className="action-btn primary" onClick={handleAddContract}><PlusCircle size={16}/> Новый договор</button>
+                        </div>
+                        <div style={{maxHeight: 400, overflowY:'auto'}}>
+                            <table className="users-table">
+                                <thead><tr><th>Название</th><th style={{width:40}}></th></tr></thead>
+                                <tbody>
+                                    {building.contracts?.map(c => (
+                                        <tr key={c.id}>
+                                            <td>{c.name}</td>
+                                            <td>
+                                                <button className="icon-btn-danger" onClick={() => handleDeleteContract(c.id, c.name)}><Trash2 size={16}/></button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {(!building.contracts || building.contracts.length === 0) && <tr><td colSpan="2" style={{textAlign:'center'}}>Нет договоров</td></tr>}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div style={{marginTop: 20, textAlign:'right'}}>
+                            <button className="action-btn secondary" onClick={() => setShowContractsModal(false)}>Закрыть</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div style={{padding: '0 32px', marginTop: 24, display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap: 20}}>
                 <div style={{background:'var(--bg-card)', padding: 20, borderRadius: 12, border: '1px solid var(--border-color)', display:'flex', alignItems:'center', gap: 15}}>
@@ -239,18 +323,27 @@ const BuildingPage = ({ buildings, user, actions, setSelectedRoom, filterGroupId
                                     
                                     // Проверка наличия задач для обводки (белый контур)
                                     let hasFilteredTasks = false;
-                                    if (filterGroupId && filterGroupId !== '') {
-                                        hasFilteredTasks = room.tasks.some(t => {
+                                    // Логика фильтрации для подсветки: учитываем и группу, и контракт
+                                    const filteredTasks = room.tasks.filter(t => {
+                                        let matchGroup = true;
+                                        if (filterGroupId && filterGroupId !== '') {
                                             const tGroup = t.groupId || 'uncategorized';
-                                            return tGroup === filterGroupId;
-                                        });
-                                    }
+                                            matchGroup = (tGroup === filterGroupId);
+                                        }
+                                        let matchContract = true;
+                                        if (filterContractId && filterContractId !== '') {
+                                            const tContract = t.contractId || 'uncategorized';
+                                            matchContract = (tContract === filterContractId);
+                                        }
+                                        return matchGroup && matchContract;
+                                    });
+                                    if (filteredTasks.length > 0) hasFilteredTasks = true;
 
                                     return (
                                         <div 
                                             key={room.id} 
                                             className={`room-item ${statusClass} ${hasFilteredTasks ? 'filtered-highlight' : ''}`}
-                                            onClick={() => setSelectedRoom({ buildingId: building.id, floorId: floor.id, room })}
+                                            onClick={() => setSelectedRoom({ buildingId: building.id, floorId: floor.id, room, contracts: building.contracts })}
                                             draggable={isReorderingMode}
                                             onDragStart={(e) => onDragStart(e, 'room', room, roomIndex, floor.id)}
                                             onDragEnd={onDragEnd}
@@ -258,7 +351,7 @@ const BuildingPage = ({ buildings, user, actions, setSelectedRoom, filterGroupId
                                             onDrop={(e) => onDrop(e, 'room', roomIndex, floor.id)}
                                             style={{cursor: isReorderingMode ? 'grab' : 'pointer'}}
                                         >
-                                            {/* Кнопка копирования квартиры (видна только редактору и не в режиме перемещения) */}
+                                            {/* Кнопка копирования квартиры */}
                                             {hasEditRights && !isReorderingMode && (
                                                 <div 
                                                     style={{position:'absolute', top:4, right:4, opacity:0.6}}
@@ -271,13 +364,7 @@ const BuildingPage = ({ buildings, user, actions, setSelectedRoom, filterGroupId
                                             
                                             <div className="room-name">{room.name}</div>
                                             <div className="room-stats">
-                                                {(() => {
-                                                    const tasks = filterGroupId 
-                                                        ? room.tasks.filter(t => (t.groupId || 'uncategorized') === filterGroupId) 
-                                                        : room.tasks;
-                                                    const done = tasks.filter(t => t.work_done && t.doc_done).length;
-                                                    return `${done}/${tasks.length}`;
-                                                })()}
+                                                {`${filteredTasks.filter(t=>t.work_done && t.doc_done).length}/${filteredTasks.length}`}
                                             </div>
                                         </div>
                                     );

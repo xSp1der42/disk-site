@@ -168,12 +168,41 @@ module.exports = function(io, socket) {
         } catch (e) { console.error(e); }
     });
 
-    // --- Структура ---
+    // --- Структура: ДОГОВОРЫ ---
+    socket.on('create_contract', async ({ buildingId, name, user }) => {
+        if (!user || !canEditStructure(user.role)) return;
+        try {
+            const b = await Building.findOne({ id: buildingId });
+            if (b) {
+                b.contracts.push({ id: genId(), name, description: '' });
+                await b.save();
+                await broadcastBuildings();
+                createLog(io, user.username, user.role, 'Договор', `Объект: ${b.name}, Добавлен договор: ${name}`);
+            }
+        } catch (e) { console.error(e); }
+    });
+
+    socket.on('delete_contract', async ({ buildingId, contractId, user }) => {
+        if (!user || !canEditStructure(user.role)) return;
+        try {
+            const b = await Building.findOne({ id: buildingId });
+            if (b) {
+                const c = b.contracts.find(x => x.id === contractId);
+                b.contracts = b.contracts.filter(x => x.id !== contractId);
+                // Опционально: очистить contractId у задач? Пока оставим как есть.
+                await b.save();
+                await broadcastBuildings();
+                createLog(io, user.username, user.role, 'Договор', `Объект: ${b.name}, Удален договор: ${c ? c.name : contractId}`);
+            }
+        } catch (e) { console.error(e); }
+    });
+
+    // --- Структура: ОБЪЕКТЫ, ЭТАЖИ, КОМНАТЫ ---
     socket.on('create_building', async ({ name, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
             const count = await Building.countDocuments();
-            const newBuilding = new Building({ id: genId(), name: name, order: count + 1, floors: [] });
+            const newBuilding = new Building({ id: genId(), name: name, order: count + 1, floors: [], contracts: [] });
             await newBuilding.save();
             await broadcastBuildings();
             createLog(io, user.username, user.role, 'Структура', `Создан дом: "${name}"`);
@@ -209,7 +238,8 @@ module.exports = function(io, socket) {
         } catch(e) { console.error(e); }
     });
 
-    socket.on('add_task', async ({ buildingId, floorId, roomId, taskName, groupId, volume, unit, unit_power, user }) => {
+    // --- РАБОТЫ (СМР) ---
+    socket.on('add_task', async ({ buildingId, floorId, roomId, taskName, groupId, contractId, volume, unit, unit_power, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
             const b = await Building.findOne({ id: buildingId });
@@ -220,6 +250,7 @@ module.exports = function(io, socket) {
                     id: genId(), 
                     name: taskName, 
                     groupId: groupId || null,
+                    contractId: contractId || null, // Привязка к договору
                     volume: parseFloat(volume) || 0,
                     unit: unit || 'шт',
                     unit_power: unit_power || '',
@@ -227,7 +258,8 @@ module.exports = function(io, socket) {
                     doc_done: false,
                     start_date: null,
                     end_date: null,
-                    comments: []
+                    comments: [],
+                    mtr: []
                 });
                 await b.save();
                 await broadcastBuildings();
@@ -245,12 +277,27 @@ module.exports = function(io, socket) {
             const t = r?.tasks.find(x => x.id === taskId);
             
             if (t) {
+                let volumeChanged = false;
                 if (data.name) t.name = data.name;
                 if (data.groupId !== undefined) t.groupId = data.groupId;
-                if (data.volume !== undefined) t.volume = parseFloat(data.volume);
+                if (data.contractId !== undefined) t.contractId = data.contractId;
+                if (data.volume !== undefined) {
+                    const newVol = parseFloat(data.volume);
+                    if (t.volume !== newVol) {
+                        t.volume = newVol;
+                        volumeChanged = true;
+                    }
+                }
                 if (data.unit !== undefined) t.unit = data.unit;
                 if (data.unit_power !== undefined) t.unit_power = data.unit_power;
                 
+                // Если изменился объем СМР, пересчитываем все МТР
+                if (volumeChanged && t.mtr && t.mtr.length > 0) {
+                    t.mtr.forEach(m => {
+                        m.total = t.volume * m.coefficient;
+                    });
+                }
+
                 await b.save();
                 await broadcastBuildings();
                 createLog(io, user.username, user.role, 'Редактирование', `Кв: ${r.name}, Изменена работа: ${t.name}`);
@@ -258,7 +305,52 @@ module.exports = function(io, socket) {
         } catch (e) { console.error(e); }
     });
 
-    // --- НОВОЕ: Переупорядочивание Drag & Drop ---
+    // --- МТР (МАТЕРИАЛЫ) ---
+    socket.on('add_mtr', async ({ buildingId, floorId, roomId, taskId, name, unit, coefficient, user }) => {
+        if (!user || !canEditStructure(user.role)) return;
+        try {
+            const b = await Building.findOne({ id: buildingId });
+            const f = b?.floors.find(x => x.id === floorId);
+            const r = f?.rooms.find(x => x.id === roomId);
+            const t = r?.tasks.find(x => x.id === taskId);
+
+            if (t) {
+                const coef = parseFloat(coefficient) || 0;
+                const total = t.volume * coef;
+                
+                t.mtr.push({
+                    id: genId(),
+                    name,
+                    unit,
+                    coefficient: coef,
+                    total
+                });
+                
+                await b.save();
+                await broadcastBuildings();
+                createLog(io, user.username, user.role, 'МТР', `К работе "${t.name}" добавлен материал: ${name}`);
+            }
+        } catch (e) { console.error(e); }
+    });
+
+    socket.on('delete_mtr', async ({ buildingId, floorId, roomId, taskId, mtrId, user }) => {
+        if (!user || !canEditStructure(user.role)) return;
+        try {
+            const b = await Building.findOne({ id: buildingId });
+            const f = b?.floors.find(x => x.id === floorId);
+            const r = f?.rooms.find(x => x.id === roomId);
+            const t = r?.tasks.find(x => x.id === taskId);
+
+            if (t) {
+                t.mtr = t.mtr.filter(m => m.id !== mtrId);
+                await b.save();
+                await broadcastBuildings();
+                createLog(io, user.username, user.role, 'МТР', `Удален материал из работы "${t.name}"`);
+            }
+        } catch (e) { console.error(e); }
+    });
+
+    // --- Переупорядочивание Drag & Drop ---
     socket.on('reorder_item', async ({ type, buildingId, floorId, sourceIndex, destinationIndex, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
@@ -268,7 +360,6 @@ module.exports = function(io, socket) {
             let arr = null;
 
             if (type === 'floor') {
-                // Сортируем текущий массив, чтобы индексы соответствовали
                 b.floors.sort((a,b) => (a.order || 0) - (b.order || 0));
                 arr = b.floors;
             } else if (type === 'room') {
@@ -282,20 +373,14 @@ module.exports = function(io, socket) {
             if (arr) {
                 const [movedItem] = arr.splice(sourceIndex, 1);
                 arr.splice(destinationIndex, 0, movedItem);
-
-                // Перезаписываем order
-                arr.forEach((item, index) => {
-                    item.order = index;
-                });
-
+                arr.forEach((item, index) => { item.order = index; });
                 await b.save();
                 await broadcastBuildings();
-                // createLog не пишем на каждое движение, чтобы не спамить
             }
         } catch (e) { console.error(e); }
     });
 
-    // --- НОВОЕ: Копирование ---
+    // --- Копирование ---
     socket.on('copy_item', async ({ type, ids, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
@@ -306,20 +391,21 @@ module.exports = function(io, socket) {
                 id: genId(),
                 name: t.name,
                 groupId: t.groupId,
+                contractId: t.contractId, // Копируем привязку
                 volume: t.volume,
                 unit: t.unit,
                 unit_power: t.unit_power,
-                work_done: false, // При копировании сбрасываем статус
+                work_done: false,
                 doc_done: false,
                 start_date: null,
                 end_date: null,
-                comments: []
+                comments: [],
+                mtr: t.mtr.map(m => ({ ...m, id: genId() })) // Копируем МТР
             }));
 
             if (type === 'floor') {
                 const f = b.floors.find(x => x.id === ids.floorId);
                 if (f) {
-                    const newFloorId = genId();
                     const newRooms = f.rooms.map(r => ({
                         id: genId(),
                         name: r.name,
@@ -328,12 +414,11 @@ module.exports = function(io, socket) {
                     }));
                     
                     b.floors.push({
-                        id: newFloorId,
+                        id: genId(),
                         name: `${f.name} (Копия)`,
                         order: b.floors.length,
                         rooms: newRooms
                     });
-                    
                     await b.save();
                     await broadcastBuildings();
                     createLog(io, user.username, user.role, 'Копирование', `Скопирован этаж: ${f.name}`);
@@ -343,13 +428,12 @@ module.exports = function(io, socket) {
                 if (f) {
                     const r = f.rooms.find(x => x.id === ids.roomId);
                     if (r) {
-                        const newRoom = {
+                        f.rooms.push({
                             id: genId(),
                             name: `${r.name} (Копия)`,
                             order: f.rooms.length,
                             tasks: copyTasks(r.tasks)
-                        };
-                        f.rooms.push(newRoom);
+                        });
                         await b.save();
                         await broadcastBuildings();
                         createLog(io, user.username, user.role, 'Копирование', `Скопировано помещение: ${r.name}`);
@@ -417,38 +501,32 @@ module.exports = function(io, socket) {
         } catch(e) { console.error(e); }
     });
 
-    // (Старое перемещение по кнопкам - оставим для совместимости с админкой)
     socket.on('move_item', async ({ type, direction, ids, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
             if (type === 'building') {
                 let buildings = await Building.find().sort({ order: 1 });
                 const idx = buildings.findIndex(b => b.id === ids.buildingId);
-                
                 if (idx === -1) return;
 
                 if (direction === 'up' && idx > 0) {
                     const temp = buildings[idx].order;
                     buildings[idx].order = buildings[idx - 1].order;
                     buildings[idx - 1].order = temp;
-                    
                     if(buildings[idx].order === buildings[idx - 1].order) {
                         buildings[idx - 1].order = idx; 
                         buildings[idx].order = idx + 1;
                     }
-
                     await buildings[idx].save();
                     await buildings[idx - 1].save();
                 } else if (direction === 'down' && idx < buildings.length - 1) {
                     const temp = buildings[idx].order;
                     buildings[idx].order = buildings[idx + 1].order;
                     buildings[idx + 1].order = temp;
-
                     if(buildings[idx].order === buildings[idx + 1].order) {
                         buildings[idx].order = idx + 1;
                         buildings[idx + 1].order = idx;
                     }
-
                     await buildings[idx].save();
                     await buildings[idx + 1].save();
                 }
@@ -482,19 +560,16 @@ module.exports = function(io, socket) {
 
     socket.on('update_task_dates', async ({ buildingId, floorId, roomId, taskId, dates, user }) => {
         if (!user || !['admin', 'architect'].includes(user.role)) return;
-
         try {
             const b = await Building.findOne({ id: buildingId });
             const f = b?.floors.find(x => x.id === floorId);
             const r = f?.rooms.find(x => x.id === roomId);
             const t = r?.tasks.find(x => x.id === taskId);
-
             if (t) {
                 t.start_date = dates.start ? new Date(dates.start) : null;
                 t.end_date = dates.end ? new Date(dates.end) : null;
                 await b.save();
                 await broadcastBuildings();
-                
                 const sDate = dates.start ? new Date(dates.start).toLocaleDateString('ru-RU') : '...';
                 const eDate = dates.end ? new Date(dates.end).toLocaleDateString('ru-RU') : '...';
                 createLog(io, user.username, user.role, 'Сроки', `Кв: ${r.name} -> ${t.name}, Период: ${sDate} - ${eDate}`);
@@ -509,7 +584,6 @@ module.exports = function(io, socket) {
             const f = b?.floors.find(x => x.id === floorId);
             const r = f?.rooms.find(x => x.id === roomId);
             const t = r?.tasks.find(x => x.id === taskId);
-
             if (t) {
                 t.comments.push({
                     id: genId(),
