@@ -7,10 +7,7 @@ const Sidebar = ({ user, buildings, logout, theme, toggleTheme }) => {
     const navigate = useNavigate();
     const location = useLocation();
     
-    const isActive = (path) => {
-        if (path === '/dashboard' && (location.pathname === '/dashboard' || location.pathname === '/')) return true;
-        return location.pathname.startsWith(path) && path !== '/dashboard';
-    };
+    const isActive = (path) => location.pathname === path || (path !== '/dashboard' && location.pathname.startsWith(path));
 
     return (
       <aside className="sidebar">
@@ -23,7 +20,7 @@ const Sidebar = ({ user, buildings, logout, theme, toggleTheme }) => {
                 {user.username[0].toUpperCase()}
             </div>
             <div className="user-info">
-                <div className="user-name">{user.name ? `${user.name} ${user.surname?.[0] || ''}.` : user.username}</div>
+                <div className="user-name">{user.name || user.username}</div>
                 <div className="user-role" style={{color: ROLES_CONFIG[user.role].color}}>
                     {ROLES_CONFIG[user.role].label}
                 </div>
@@ -32,47 +29,32 @@ const Sidebar = ({ user, buildings, logout, theme, toggleTheme }) => {
 
         <nav className="nav-menu">
             <div className="nav-group-title">Меню</div>
-            <div className={`nav-item ${isActive('/dashboard') && location.pathname.split('/').length < 3 ? 'active' : ''}`} 
-                 onClick={() => navigate('/dashboard')}>
-                <LayoutDashboard size={18} /> Обзор объектов
+            <div className={`nav-item ${isActive('/dashboard') ? 'active' : ''}`} onClick={() => navigate('/dashboard')}>
+                <LayoutDashboard size={18} /> Объекты
             </div>
 
-            {/* ВКЛАДКА АНАЛИТИКИ (Только для директора и админа) */}
             {['admin', 'director'].includes(user.role) && (
-                 <div className={`nav-item ${isActive('/analytics') ? 'active' : ''}`} 
-                     onClick={() => navigate('/analytics')}>
+                 <div className={`nav-item ${isActive('/analytics') ? 'active' : ''}`} onClick={() => navigate('/analytics')}>
                     <PieChart size={18} /> Аналитика
                 </div>
             )}
             
             {user.role === 'admin' && (
-                <div className={`nav-item ${isActive('/users') ? 'active' : ''}`} 
-                     onClick={() => navigate('/users')}>
-                    <Users size={18} /> Сотрудники
-                </div>
-            )}
-
-            {user.role === 'admin' && (
-                <div className={`nav-item ${isActive('/groups') ? 'active' : ''}`} 
-                     onClick={() => navigate('/groups')}>
-                    <Book size={18} /> Справочник работ
-                </div>
+                <>
+                    <div className={`nav-item ${isActive('/users') ? 'active' : ''}`} onClick={() => navigate('/users')}>
+                        <Users size={18} /> Сотрудники
+                    </div>
+                    <div className={`nav-item ${isActive('/groups') ? 'active' : ''}`} onClick={() => navigate('/groups')}>
+                        <Book size={18} /> Справочник
+                    </div>
+                </>
             )}
 
             {['admin', 'director'].includes(user.role) && (
-                <div className={`nav-item ${isActive('/logs') ? 'active' : ''}`} 
-                     onClick={() => navigate('/logs')}>
-                    <List size={18} /> Журнал событий
+                <div className={`nav-item ${isActive('/logs') ? 'active' : ''}`} onClick={() => navigate('/logs')}>
+                    <List size={18} /> Логи
                 </div>
             )}
-
-            <div className="nav-group-title">Объекты (Дома)</div>
-            {buildings.map(b => (
-                 <div key={b.id} className={`nav-item ${location.pathname.includes(b.id) ? 'active' : ''}`} 
-                      onClick={() => navigate(`/dashboard/${b.id}`)}>
-                    <Building2 size={16} /> {b.name}
-                 </div>
-            ))}
         </nav>
 
         <div className="sidebar-footer">

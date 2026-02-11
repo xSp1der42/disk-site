@@ -34,7 +34,6 @@ const cleanOldLogs = async () => {
     }
 };
 
-// Вспомогательная функция для форматирования единиц измерения в Excel
 const formatUnit = (base, power) => {
     const superscripts = { '2': '²', '3': '³' };
     const p = power ? (superscripts[power] || power) : '';
@@ -50,14 +49,13 @@ const io = new Server(server, {
 });
 
 // ==========================================
-// 1. ГЛОБАЛЬНЫЙ ЭКСПОРТ (FIXED)
+// ЭКСПОРТ (Обновлен под договоры)
 // ==========================================
 app.get('/api/export/global', async (req, res) => {
     try {
         const buildings = await Building.find().sort({ order: 1 });
-        
-        const username = req.query.username || 'Директор';
-        const role = req.query.role || 'director';
+        const username = req.query.username || 'User';
+        const role = req.query.role || 'guest';
         await createLog(io, username, role, 'Экспорт', `Скачан ПОЛНЫЙ отчет по компании`);
 
         const workbook = new ExcelJS.Workbook();
@@ -66,6 +64,7 @@ app.get('/api/export/global', async (req, res) => {
         const summarySheet = workbook.addWorksheet('Сводка по объектам');
         summarySheet.columns = [
             { header: 'Объект', key: 'name', width: 30 },
+            { header: 'Договоров', key: 'contracts', width: 15 },
             { header: 'Всего задач', key: 'total', width: 15 },
             { header: 'Выполнено СМР', key: 'work', width: 20 },
             { header: 'Сдано ИД', key: 'doc', width: 20 },
@@ -77,10 +76,13 @@ app.get('/api/export/global', async (req, res) => {
         // Лист 2: Детализация
         const detailSheet = workbook.addWorksheet('Полная детализация');
         detailSheet.columns = [
-            { header: 'Объект', key: 'b_name', width: 25 },
+            { header: 'Объект', key: 'b_name', width: 20 },
+            { header: 'Договор', key: 'c_name', width: 20 },
             { header: 'Этаж', key: 'floor', width: 15 },
             { header: 'Помещение', key: 'room', width: 20 },
-            { header: 'Работа', key: 'task', width: 40 },
+            { header: 'Тип', key: 'type', width: 10 },
+            { header: 'Пакет', key: 'pkg', width: 15 },
+            { header: 'Работа/МТР', key: 'task', width: 35 },
             { header: 'Объем', key: 'vol', width: 10 },
             { header: 'Ед.', key: 'unit', width: 10 },
             { header: 'Статус СМР', key: 'st_work', width: 15 },
@@ -90,41 +92,42 @@ app.get('/api/export/global', async (req, res) => {
 
         buildings.forEach(b => {
             let bTotal = 0, bWork = 0, bDoc = 0;
+            const contracts = (b.contracts || []).sort((x,y) => (x.order || 0) - (y.order || 0));
 
-            // Сортировка этажей перед экспортом
-            const sortedFloors = (b.floors || []).sort((x,y) => (x.order || 0) - (y.order || 0));
+            contracts.forEach(c => {
+                const floors = (c.floors || []).sort((x,y) => (x.order || 0) - (y.order || 0));
+                floors.forEach(f => {
+                    const rooms = (f.rooms || []).sort((x,y) => (x.order || 0) - (y.order || 0));
+                    rooms.forEach(r => {
+                        r.tasks.forEach(t => {
+                            bTotal++;
+                            if(t.work_done) bWork++;
+                            if(t.doc_done) bDoc++;
 
-            sortedFloors.forEach(f => {
-                // Сортировка помещений
-                const sortedRooms = (f.rooms || []).sort((x,y) => (x.order || 0) - (y.order || 0));
+                            // Добавляем в детализацию
+                            const row = detailSheet.addRow({
+                                b_name: b.name,
+                                c_name: c.name,
+                                floor: f.name,
+                                room: r.name,
+                                type: t.type === 'mtr' ? 'МТР' : 'СМР',
+                                pkg: t.package || '-',
+                                task: t.name,
+                                vol: t.volume,
+                                unit: formatUnit(t.unit, t.unit_power),
+                                st_work: t.work_done ? 'ГОТОВО' : 'В работе',
+                                st_doc: t.doc_done ? 'СДАНО' : 'Нет ИД'
+                            });
+                            
+                            const green = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } };
+                            const red = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } };
 
-                sortedRooms.forEach(r => {
-                    r.tasks.forEach(t => {
-                        bTotal++;
-                        if(t.work_done) bWork++;
-                        if(t.doc_done) bDoc++;
+                            if (t.work_done) row.getCell('st_work').fill = green;
+                            else row.getCell('st_work').fill = red;
 
-                        // Добавляем в детализацию
-                        const row = detailSheet.addRow({
-                            b_name: b.name,
-                            floor: f.name,
-                            room: r.name,
-                            task: t.name,
-                            vol: t.volume,
-                            unit: formatUnit(t.unit, t.unit_power),
-                            st_work: t.work_done ? 'ГОТОВО' : 'В работе',
-                            st_doc: t.doc_done ? 'СДАНО' : 'Нет акта'
+                            if (t.doc_done) row.getCell('st_doc').fill = green;
+                            else row.getCell('st_doc').fill = red;
                         });
-                        
-                        // Цвета для ячеек
-                        const green = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } };
-                        const red = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } };
-
-                        if (t.work_done) row.getCell('st_work').fill = green;
-                        else row.getCell('st_work').fill = red;
-
-                        if (t.doc_done) row.getCell('st_doc').fill = green;
-                        else row.getCell('st_doc').fill = red;
                     });
                 });
             });
@@ -132,6 +135,7 @@ app.get('/api/export/global', async (req, res) => {
             // Добавляем в сводку
             summarySheet.addRow({
                 name: b.name,
+                contracts: contracts.length,
                 total: bTotal,
                 work: bWork,
                 doc: bDoc,
@@ -148,111 +152,6 @@ app.get('/api/export/global', async (req, res) => {
     } catch (e) {
         console.error("Export Error:", e);
         res.status(500).send('Ошибка генерации глобального отчета');
-    }
-});
-
-// ==========================================
-// 2. ЭКСПОРТ КОНКРЕТНОГО ДОМА (FIXED)
-// ==========================================
-app.get('/api/export/:buildingId', async (req, res) => {
-    try {
-        const building = await Building.findOne({ id: req.params.buildingId });
-        if (!building) return res.status(404).send('Объект не найден');
-
-        const username = req.query.username || 'Неизвестный';
-        const role = req.query.role || 'user';
-        await createLog(io, username, role, 'Экспорт', `Скачан отчет Excel: ${building.name}`);
-
-        const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Отчет');
-
-        // Настройка колонок
-        worksheet.columns = [
-            { header: 'Этаж', key: 'floor', width: 20 },
-            { header: 'Помещение', key: 'room', width: 25 },
-            { header: 'Работа', key: 'task', width: 50 },
-            { header: 'Ед. изм.', key: 'unit', width: 12, style: { alignment: { horizontal: 'center' } } },
-            { header: 'Объем', key: 'volume', width: 12 },
-            { header: 'СМР (Факт)', key: 'work', width: 18, style: { alignment: { horizontal: 'center' } } },
-            { header: 'ИД (Доки)', key: 'doc', width: 18, style: { alignment: { horizontal: 'center' } } },
-        ];
-
-        // Стилизация заголовка
-        const headerRow = worksheet.getRow(1);
-        headerRow.font = { bold: true, size: 12 };
-        headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
-        headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
-        headerRow.height = 25;
-
-        // Сортировка перед выводом (чтобы соответствовало порядку на экране)
-        const sortedFloors = (building.floors || []).sort((x,y) => (x.order || 0) - (y.order || 0));
-
-        sortedFloors.forEach(floor => {
-             const sortedRooms = (floor.rooms || []).sort((x,y) => (x.order || 0) - (y.order || 0));
-
-             sortedRooms.forEach(room => {
-                if (room.tasks.length === 0) {
-                    worksheet.addRow({ 
-                        floor: floor.name, 
-                        room: room.name, 
-                        task: 'Нет работ', 
-                        unit: '-', 
-                        volume: '-', 
-                        work: '-', 
-                        doc: '-' 
-                    });
-                } else {
-                    room.tasks.forEach(task => {
-                        const row = worksheet.addRow({
-                            floor: floor.name,
-                            room: room.name,
-                            task: task.name,
-                            unit: formatUnit(task.unit, task.unit_power),
-                            volume: task.volume || 0,
-                            work: task.work_done ? 'ВЫПОЛНЕНО' : 'В работе',
-                            doc: task.doc_done ? 'ПОДПИСАНО' : 'Нет акта'
-                        });
-
-                        const green = { argb: 'FFC6EFCE' }; // Зеленый
-                        const red = { argb: 'FFFFC7CE' };   // Красный
-
-                        // СМР
-                        if (task.work_done) {
-                            row.getCell('work').fill = { type: 'pattern', pattern: 'solid', fgColor: green };
-                        } else {
-                             row.getCell('work').fill = { type: 'pattern', pattern: 'solid', fgColor: red };
-                        }
-
-                        // ИД
-                        if (task.doc_done) {
-                            row.getCell('doc').fill = { type: 'pattern', pattern: 'solid', fgColor: green };
-                        } else {
-                            row.getCell('doc').fill = { type: 'pattern', pattern: 'solid', fgColor: red };
-                        }
-                    });
-                }
-            });
-        });
-
-        // Границы таблицы
-        worksheet.eachRow((row, rowNumber) => {
-            row.eachCell((cell) => {
-                cell.border = {
-                    top: { style: 'thin' },
-                    left: { style: 'thin' },
-                    bottom: { style: 'thin' },
-                    right: { style: 'thin' }
-                };
-            });
-        });
-
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename="Report_${encodeURIComponent(building.name)}.xlsx"`);
-        await workbook.xlsx.write(res);
-        res.end();
-    } catch (e) {
-        console.error(e);
-        res.status(500).send('Ошибка генерации отчета');
     }
 });
 
