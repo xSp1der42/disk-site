@@ -33,20 +33,36 @@ const BuildingPage = ({ buildings, user, actions, sysActions }) => {
         });
     };
 
-    // Статистика для карточки договора
+    // Статистика для карточки договора + уведомления
     const getContractStats = (contract) => {
         let total = 0, work = 0, doc = 0;
-        contract.floors.forEach(f => f.rooms.forEach(r => r.tasks.forEach(t => {
-            if (t.type === 'smr') {
-                total++;
+        let hasUnread = false;
+
+        contract.floors.forEach(f => f.rooms.forEach(r => {
+            // Проверка уведомлений
+            if (r.tasks) {
+                r.tasks.forEach(t => {
+                    const lastRead = localStorage.getItem(`read_comments_${t.id}`);
+                    if (t.comments && t.comments.length > 0) {
+                        if (!lastRead || new Date(t.comments[t.comments.length-1].timestamp) > new Date(lastRead)) {
+                            hasUnread = true;
+                        }
+                    }
+                });
+            }
+
+            r.tasks.forEach(t => {
+                total++; // Считаем задачи
                 if (t.work_done) work++;
                 if (t.doc_done) doc++;
-            }
-        })));
+            });
+        }));
+
         return { 
             total, 
             workPercent: total ? Math.round((work/total)*100) : 0, 
-            docPercent: total ? Math.round((doc/total)*100) : 0 
+            docPercent: total ? Math.round((doc/total)*100) : 0,
+            hasUnread
         };
     };
 
@@ -83,6 +99,9 @@ const BuildingPage = ({ buildings, user, actions, sysActions }) => {
                         const stats = getContractStats(c);
                         return (
                             <div key={c.id} className="project-card" onClick={() => navigate(`/dashboard/${building.id}/${c.id}`)}>
+                                {/* ИНДИКАТОР УВЕДОМЛЕНИЙ НА ДОГОВОРЕ */}
+                                {stats.hasUnread && <div style={{position:'absolute', top: -5, right: -5, width: 14, height: 14, background: '#ef4444', borderRadius: '50%', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.2)', zIndex: 5}}></div>}
+                                
                                 <div className="card-top">
                                     <div style={{background: 'var(--bg-active)', padding: 12, borderRadius: 12}}>
                                         <FileText size={32} color="var(--accent-secondary)"/>
