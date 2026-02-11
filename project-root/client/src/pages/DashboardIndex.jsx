@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, PlusCircle, Building2, ChevronUp, ChevronDown, Pencil, Trash2, FileText, BarChart3 } from 'lucide-react';
+import { Search, PlusCircle, Building2, Pencil, Trash2, FileText } from 'lucide-react';
+import { hasUnreadInBuilding } from '../utils/helpers';
 
 const DashboardIndex = ({ buildings, user, actions, sysActions }) => {
     const navigate = useNavigate();
@@ -24,29 +25,6 @@ const DashboardIndex = ({ buildings, user, actions, sysActions }) => {
             if(newName !== oldName) actions.renameItem('building', {buildingId: id}, newName);
         }, oldName);
     }
-
-    // Проверка уведомлений на уровне объекта
-    const checkBuildingNotifications = (b) => {
-        let hasUnread = false;
-        b.contracts.forEach(c => {
-            c.floors.forEach(f => {
-                f.rooms.forEach(r => {
-                    if (r.tasks) {
-                        r.tasks.forEach(t => {
-                            const lastRead = localStorage.getItem(`read_comments_${t.id}`);
-                            if (t.comments && t.comments.length > 0) {
-                                // Если вообще не читали или последний коммент новее даты прочтения
-                                if (!lastRead || new Date(t.comments[t.comments.length-1].timestamp) > new Date(lastRead)) {
-                                    hasUnread = true;
-                                }
-                            }
-                        });
-                    }
-                });
-            });
-        });
-        return hasUnread;
-    };
 
     const filteredBuildings = buildings.filter(b => 
         b.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -80,12 +58,24 @@ const DashboardIndex = ({ buildings, user, actions, sysActions }) => {
 
             <div className="content-area">
                 <div className="dashboard-grid">
-                    {filteredBuildings.map((b, idx) => {
-                        const hasUnread = checkBuildingNotifications(b);
+                    {filteredBuildings.map((b) => {
+                        // ПРОВЕРКА УВЕДОМЛЕНИЙ НА УРОВНЕ ОБЪЕКТА
+                        const hasUnread = hasUnreadInBuilding(b);
+
                         return (
                             <div key={b.id} className="project-card" onClick={() => navigate(`/dashboard/${b.id}`)}>
-                                {/* ИНДИКАТОР УВЕДОМЛЕНИЙ НА ОБЪЕКТЕ */}
-                                {hasUnread && <div style={{position:'absolute', top: -5, right: -5, width: 14, height: 14, background: '#ef4444', borderRadius: '50%', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.2)', zIndex: 5}}></div>}
+                                {/* КРАСНАЯ ТОЧКА */}
+                                {hasUnread && (
+                                    <div style={{
+                                        position:'absolute', top: -6, right: -6, 
+                                        width: 16, height: 16, 
+                                        background: '#ef4444', 
+                                        borderRadius: '50%', 
+                                        border: '2px solid var(--bg-body)', 
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)', 
+                                        zIndex: 5
+                                    }}></div>
+                                )}
                                 
                                 <div className="card-top">
                                     <div style={{background: 'var(--bg-active)', padding: 12, borderRadius: 12}}>

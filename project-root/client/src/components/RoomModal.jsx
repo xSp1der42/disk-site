@@ -1,11 +1,12 @@
+--- START OF FILE RoomModal.jsx ---
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Pencil, Trash2, Layers, Hammer, FileText, PlusCircle, Calendar, MessageSquare, Clock, Send, X, Search, Package, Plus, Paperclip } from 'lucide-react';
-import { ROLES_CONFIG } from '../utils/constants';
+import { Pencil, Trash2, Layers, Hammer, FileText, PlusCircle, Calendar, MessageSquare, Clock, Send, X, Search, Plus, Paperclip, File as FileIcon } from 'lucide-react';
 import socket from '../utils/socket';
+import { hasUnreadInTask } from '../utils/helpers';
 
 const UNITS = ['шт', 'м', 'м²', 'м³', 'м.п.', 'компл', 'кг', 'т', 'упак', 'л'];
 
-// --- POPUPS ---
 const DatePickerPopup = ({ task, onSave, onClose }) => {
     const [start, setStart] = useState(task.start_date ? new Date(task.start_date).toISOString().split('T')[0] : '');
     const [end, setEnd] = useState(task.end_date ? new Date(task.end_date).toISOString().split('T')[0] : '');
@@ -36,19 +37,35 @@ const ChatPopup = ({ task, currentUser, onAddComment, onClose }) => {
         const file = e.target.files[0];
         if (!file) return;
         
-        // Проверка размера (например, 5МБ), чтобы не уронить сокет
-        if (file.size > 5 * 1024 * 1024) {
-            alert("Файл слишком большой (макс 5МБ)");
+        // Лимит 8MB для сокетов
+        if (file.size > 8 * 1024 * 1024) {
+            alert("Файл слишком большой (макс 8МБ)");
             return;
         }
 
         const reader = new FileReader();
         reader.onload = (evt) => {
             const base64 = evt.target.result;
-            // Отправляем файл как вложение
-            onAddComment("Вложение: " + file.name, [{ name: file.name, data: base64, type: file.type }]);
+            // Отправляем как текст комментария + массив вложений
+            onAddComment("📎 " + file.name, [{ name: file.name, data: base64, type: file.type }]);
         };
         reader.readAsDataURL(file);
+    };
+
+    const renderAttachment = (att) => {
+        if (att.type.startsWith('image/')) {
+            return (
+                <div style={{marginTop: 5}}>
+                    <img src={att.data} alt={att.name} style={{maxWidth: '100%', borderRadius: 8, cursor:'pointer'}} onClick={() => window.open(att.data)} />
+                </div>
+            );
+        }
+        return (
+            <div style={{marginTop: 5, padding: 6, background: 'rgba(255,255,255,0.2)', borderRadius: 6, fontSize: '0.85rem', display:'flex', alignItems:'center', gap:5}}>
+                <FileIcon size={14}/>
+                <a href={att.data} download={att.name} style={{color: 'inherit', textDecoration: 'underline', wordBreak:'break-all'}}>{att.name}</a>
+            </div>
+        );
     };
 
     return (
@@ -60,12 +77,8 @@ const ChatPopup = ({ task, currentUser, onAddComment, onClose }) => {
                     <div key={c.id} style={{ alignSelf: (c.author.includes(currentUser.surname) || c.role === currentUser.role) ? 'flex-end' : 'flex-start', maxWidth: '85%', background: (c.author.includes(currentUser.surname) || c.role === currentUser.role) ? 'var(--accent-primary)' : 'var(--bg-card)', color: (c.author.includes(currentUser.surname) || c.role === currentUser.role) ? 'white' : 'var(--text-main)', padding: '8px 12px', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-color)' }}>
                         <div style={{fontSize:'0.7rem', fontWeight:700, opacity: 0.8, marginBottom: 2}}>{c.author}</div>
                         <div style={{fontSize:'0.9rem'}}>{c.text}</div>
-                        {/* Отображение вложений */}
                         {c.attachments && c.attachments.map((att, i) => (
-                            <div key={i} style={{marginTop: 5, padding: 6, background: 'rgba(255,255,255,0.2)', borderRadius: 6, fontSize: '0.85rem', display:'flex', alignItems:'center', gap:5}}>
-                                <Paperclip size={14}/>
-                                <a href={att.data} download={att.name} style={{color: 'inherit', textDecoration: 'underline', wordBreak:'break-all'}}>{att.name}</a>
-                            </div>
+                            <div key={i}>{renderAttachment(att)}</div>
                         ))}
                     </div>
                 ))}
@@ -83,7 +96,6 @@ const ChatPopup = ({ task, currentUser, onAddComment, onClose }) => {
 };
 
 const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, actions, groups, sysActions }) => {
-    // При открытии модалки обновляем "last viewed"
     useEffect(() => {
         if (selectedRoom) localStorage.setItem(`viewed_room_${selectedRoom.room.id}`, new Date().toISOString());
     }, [selectedRoom]);
@@ -91,7 +103,6 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
     const [searchQuery, setSearchQuery] = useState('');
     const [filterGroupId, setFilterGroupId] = useState('');
     
-    // States
     const [isAddingSMR, setIsAddingSMR] = useState(false);
     const [newSMR, setNewSMR] = useState({ name: '', groupId: '', volume: '', unit: 'м²' });
     const [addingMTRForTask, setAddingMTRForTask] = useState(null); 
@@ -99,15 +110,11 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
     const [editingTask, setEditingTask] = useState(null);
     const [editTaskData, setEditTaskData] = useState({ name: '', groupId: '', volume: '', unit: '' });
     
-    // Popups
     const [activeDatePopup, setActiveDatePopup] = useState(null);
     const [activeChatPopup, setActiveChatPopup] = useState(null);
     const canEditDates = ['admin', 'architect'].includes(currentUser.role);
-    
-    // Для обновления UI при прочтении
     const [readState, setReadState] = useState(0); 
 
-    // Filters
     const filteredTasks = useMemo(() => {
         let tasks = selectedRoom.room.tasks || [];
         if (filterGroupId) tasks = tasks.filter(t => (t.groupId || 'uncategorized') === filterGroupId);
@@ -126,7 +133,6 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
         return result;
     }, [filteredTasks, groups]);
 
-    // Handlers
     const handleAddSMR = (e) => { e.preventDefault(); actions.addTask(selectedRoom.buildingId, selectedRoom.contractId, selectedRoom.floorId, selectedRoom.room.id, { ...newSMR, groupId: newSMR.groupId === 'uncategorized' ? '' : newSMR.groupId }); setIsAddingSMR(false); setNewSMR({ name: '', groupId: '', volume: '', unit: 'м²' }); };
     const handleAddMTR = (e, taskId) => { e.preventDefault(); socket.emit('add_material', { buildingId: selectedRoom.buildingId, contractId: selectedRoom.contractId, floorId: selectedRoom.floorId, roomId: selectedRoom.room.id, taskId: taskId, matName: newMTR.name, coefficient: newMTR.coefficient, unit: newMTR.unit, user: currentUser }); setAddingMTRForTask(null); setNewMTR({ name: '', coefficient: '1', unit: 'шт' }); };
     const handleDeleteMTR = (taskId, matId) => { socket.emit('delete_material', { buildingId: selectedRoom.buildingId, contractId: selectedRoom.contractId, floorId: selectedRoom.floorId, roomId: selectedRoom.room.id, taskId, matId, user: currentUser }); };
@@ -137,7 +143,6 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
     const handleRenameRoom = () => sysActions.prompt("Переименование", "Новое название:", (newName) => { if(newName !== selectedRoom.room.name) actions.renameItem('room', {buildingId: selectedRoom.buildingId, contractId: selectedRoom.contractId, floorId: selectedRoom.floorId, roomId: selectedRoom.room.id}, newName); }, selectedRoom.room.name);
     const handleSaveDates = (taskId, start, end) => { actions.updateTaskDates(selectedRoom.buildingId, selectedRoom.contractId, selectedRoom.floorId, selectedRoom.room.id, taskId, { start, end }); setActiveDatePopup(null); };
     
-    // Комментарии и вложения
     const handleAddComment = (taskId, text, attachments) => { 
         socket.emit('add_task_comment', { buildingId: selectedRoom.buildingId, contractId: selectedRoom.contractId, floorId: selectedRoom.floorId, roomId: selectedRoom.room.id, taskId, text, attachments, user: currentUser });
         markAsRead(taskId); 
@@ -145,13 +150,6 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
     
     const formatDate = (d) => d ? new Date(d).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) : null;
     const markAsRead = (taskId) => { localStorage.setItem(`read_comments_${taskId}`, new Date().toISOString()); setReadState(prev => prev + 1); };
-    
-    const hasUnread = (task) => { 
-        if (!task.comments || task.comments.length === 0) return false; 
-        const lastRead = localStorage.getItem(`read_comments_${task.id}`); 
-        if (!lastRead) return true; 
-        return new Date(task.comments[task.comments.length-1].timestamp) > new Date(lastRead); 
-    }
     
     const handleOpenChat = (taskId) => { 
         if (activeChatPopup === taskId) { 
@@ -166,7 +164,6 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
     return (
         <div className="modal-backdrop" onClick={() => setSelectedRoom(null)}>
             <div className="modal-window" onClick={e => { e.stopPropagation(); setActiveDatePopup(null); setActiveChatPopup(null); }}>
-                {/* HEADER */}
                 <div className="modal-top">
                     <div style={{flex: 1}}>
                         <div style={{fontSize:'0.8rem', color:'var(--text-muted)', textTransform:'uppercase', fontWeight:700, marginBottom: 4}}>Помещение</div>
@@ -209,11 +206,11 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
                                         <tr className="group-header-row"><td colSpan="6"><div style={{display:'flex', alignItems:'center', gap: 10}}><Layers size={16}/> {group.name}</div></td></tr>
                                         {group.tasks.map(task => {
                                             const dateStr = task.end_date ? formatDate(task.end_date) : null;
+                                            const hasNewMsg = hasUnreadInTask(task);
                                             
-                                            // Цветовая индикация строки на основе статуса
                                             let statusColor = 'transparent';
-                                            if (task.work_done && task.doc_done) statusColor = 'rgba(16, 185, 129, 0.1)'; // Выполнено (2/2)
-                                            else if (task.work_done) statusColor = 'rgba(234, 179, 8, 0.1)'; // В работе (1/2)
+                                            if (task.work_done && task.doc_done) statusColor = 'rgba(16, 185, 129, 0.1)'; 
+                                            else if (task.work_done) statusColor = 'rgba(234, 179, 8, 0.1)'; 
                                             
                                             const isFullyDone = task.work_done && task.doc_done;
                                             const endDateObj = task.end_date ? new Date(task.end_date) : null;
@@ -256,14 +253,12 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
                                                             )}
                                                         </td>
                                                         <td style={{textAlign:'center'}}>
-                                                            {/* Fixed Positioning Container */}
                                                             <div style={{display:'flex', gap: 4, justifyContent:'center', position: 'relative'}}>
                                                                 <button className="move-btn" disabled={!canEditDates} style={{opacity: canEditDates?1:0.3}} onClick={(e) => { e.stopPropagation(); setActiveChatPopup(null); setActiveDatePopup(activeDatePopup === task.id ? null : task.id); }}><Calendar size={18}/></button>
                                                                 {activeDatePopup === task.id && <DatePickerPopup task={task} onSave={(s, e) => handleSaveDates(task.id, s, e)} onClose={() => setActiveDatePopup(null)} />}
                                                                 <button className="move-btn" style={{position:'relative'}} onClick={(e) => { e.stopPropagation(); handleOpenChat(task.id); }}>
                                                                     <MessageSquare size={18}/>
-                                                                    {/* RED DOT NOTIFICATION */}
-                                                                    {hasUnread(task) && <span style={{position:'absolute', top:-2, right:-2, width:8, height:8, background:'#ef4444', borderRadius:'50%', border: '1px solid white'}}></span>}
+                                                                    {hasNewMsg && <span style={{position:'absolute', top:-2, right:-2, width:8, height:8, background:'#ef4444', borderRadius:'50%', border: '1px solid white'}}></span>}
                                                                 </button>
                                                                 {activeChatPopup === task.id && <ChatPopup task={task} currentUser={currentUser} onAddComment={(text, att) => handleAddComment(task.id, text, att)} onClose={() => setActiveChatPopup(null)} />}
                                                             </div>

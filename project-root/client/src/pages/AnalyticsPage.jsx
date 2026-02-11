@@ -8,22 +8,38 @@ import {
 
 const AnalyticsPage = ({ buildings, user }) => {
     const navigate = useNavigate();
-    // Состояние для переключения типа графика: 'pie' (Круг) или 'bar' (Столбцы)
     const [chartType, setChartType] = useState('pie'); 
 
-    // --- Расчет данных ---
+    // БЕЗОПАСНАЯ ПАЛИТРА ДЛЯ ГРАФИКОВ (чтобы не крашилось при большом кол-ве объектов)
+    const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
+
     const analyticsData = useMemo(() => {
         let totalStats = { total: 0, work: 0, doc: 0, vol: 0 };
         
-        // Данные по объектам
-        const buildingStats = buildings.map(b => {
+        // Безопасный проход по массиву (если buildings undefined)
+        const buildingStats = (buildings || []).map(b => {
             let bTotal = 0, bWork = 0, bDoc = 0;
-            b.floors.forEach(f => f.rooms.forEach(r => r.tasks.forEach(t => {
-                bTotal++;
-                if(t.work_done) bWork++;
-                if(t.doc_done) bDoc++;
-                totalStats.vol += (t.volume || 0);
-            })));
+            if (b.contracts) {
+                b.contracts.forEach(c => {
+                    if (c.floors) {
+                        c.floors.forEach(f => {
+                            if (f.rooms) {
+                                f.rooms.forEach(r => {
+                                    if (r.tasks) {
+                                        r.tasks.forEach(t => {
+                                            bTotal++;
+                                            if(t.work_done) bWork++;
+                                            if(t.doc_done) bDoc++;
+                                            totalStats.vol += (t.volume || 0);
+                                        });
+                                    }
+                                });
+                            }
+                        });
+                    }
+                });
+            }
+
             totalStats.total += bTotal;
             totalStats.work += bWork;
             totalStats.doc += bDoc;
@@ -40,7 +56,6 @@ const AnalyticsPage = ({ buildings, user }) => {
             };
         });
 
-        // Данные для круговой диаграммы
         const pieData = [
             { name: 'Выполнено', value: totalStats.work },
             { name: 'В работе', value: totalStats.total - totalStats.work }
@@ -49,8 +64,8 @@ const AnalyticsPage = ({ buildings, user }) => {
         return { totalStats, buildingStats, pieData };
     }, [buildings]);
 
-    // Цвета для диаграммы: Зеленый и Темно-серый (для видимости)
-    const COLORS = ['#10b981', '#94a3b8']; 
+    // Цвета для Pie Chart (Всего / Сделано)
+    const PIE_COLORS = ['#10b981', '#94a3b8']; 
 
     const handleGlobalExport = () => {
         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -59,7 +74,6 @@ const AnalyticsPage = ({ buildings, user }) => {
         window.open(`${apiUrl}/api/export/global?username=${uName}&role=${uRole}`, '_blank');
     };
 
-    // Общий процент готовности для центра круга
     const totalPercent = analyticsData.totalStats.total 
         ? Math.round((analyticsData.totalStats.work / analyticsData.totalStats.total) * 100) 
         : 0;
@@ -80,7 +94,6 @@ const AnalyticsPage = ({ buildings, user }) => {
 
             <div className="content-area" style={{padding: '32px'}}>
                 
-                {/* 1. ВЕРХНИЕ KPI КАРТОЧКИ */}
                 <div style={{display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 24, marginBottom: 32}}>
                     <div className="project-card" style={{padding: 24}}>
                         <div style={{display:'flex', alignItems:'center', gap: 12, marginBottom: 10}}>
@@ -121,37 +134,14 @@ const AnalyticsPage = ({ buildings, user }) => {
                     </div>
                 </div>
 
-                {/* 2. БЛОК ВИЗУАЛИЗАЦИИ (С ПЕРЕКЛЮЧАТЕЛЕМ) */}
                 <div className="project-card" style={{padding: 32, marginBottom: 32, minHeight: 450}}>
                     <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 24}}>
                         <h3 style={{margin:0, color: 'var(--text-main)'}}>Визуализация прогресса</h3>
-                        
-                        {/* КНОПКИ ПЕРЕКЛЮЧЕНИЯ ТИПА ГРАФИКА */}
                         <div style={{background:'var(--bg-body)', padding: 4, borderRadius: 8, display:'flex', gap: 4, border: '1px solid var(--border-color)'}}>
-                            <button 
-                                onClick={() => setChartType('pie')}
-                                style={{
-                                    border:'none', background: chartType === 'pie' ? 'var(--bg-card)' : 'transparent',
-                                    padding: '8px 16px', borderRadius: 6, cursor:'pointer',
-                                    fontWeight: chartType === 'pie' ? 600 : 400,
-                                    color: chartType === 'pie' ? 'var(--accent-primary)' : 'var(--text-muted)',
-                                    boxShadow: chartType === 'pie' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-                                    display:'flex', alignItems:'center', gap: 8
-                                }}
-                            >
+                            <button onClick={() => setChartType('pie')} style={{border:'none', background: chartType === 'pie' ? 'var(--bg-card)' : 'transparent', padding: '8px 16px', borderRadius: 6, cursor:'pointer', fontWeight: chartType === 'pie' ? 600 : 400, color: chartType === 'pie' ? 'var(--accent-primary)' : 'var(--text-muted)', boxShadow: chartType === 'pie' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none', display:'flex', alignItems:'center', gap: 8}}>
                                 <PieIcon size={18}/> Общий статус
                             </button>
-                            <button 
-                                onClick={() => setChartType('bar')}
-                                style={{
-                                    border:'none', background: chartType === 'bar' ? 'var(--bg-card)' : 'transparent',
-                                    padding: '8px 16px', borderRadius: 6, cursor:'pointer',
-                                    fontWeight: chartType === 'bar' ? 600 : 400,
-                                    color: chartType === 'bar' ? 'var(--accent-primary)' : 'var(--text-muted)',
-                                    boxShadow: chartType === 'bar' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-                                    display:'flex', alignItems:'center', gap: 8
-                                }}
-                            >
+                            <button onClick={() => setChartType('bar')} style={{border:'none', background: chartType === 'bar' ? 'var(--bg-card)' : 'transparent', padding: '8px 16px', borderRadius: 6, cursor:'pointer', fontWeight: chartType === 'bar' ? 600 : 400, color: chartType === 'bar' ? 'var(--accent-primary)' : 'var(--text-muted)', boxShadow: chartType === 'bar' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none', display:'flex', alignItems:'center', gap: 8}}>
                                 <BarChart2 size={18}/> По объектам
                             </button>
                         </div>
@@ -160,77 +150,31 @@ const AnalyticsPage = ({ buildings, user }) => {
                     <div style={{width: '100%', height: 320, position:'relative'}}>
                         {chartType === 'pie' ? (
                             <div style={{width:'100%', height:'100%', position:'relative'}}>
-                                {/* КРУГОВАЯ ДИАГРАММА */}
                                 <ResponsiveContainer width="100%" height="100%">
                                     <PieChart>
-                                        <Pie
-                                            data={analyticsData.pieData}
-                                            cx="50%"
-                                            cy="50%"
-                                            innerRadius={90}
-                                            outerRadius={120}
-                                            fill="#8884d8"
-                                            paddingAngle={3}
-                                            dataKey="value"
-                                            startAngle={90}
-                                            endAngle={-270}
-                                            stroke="var(--bg-card)" // Цвет разделителя секторов
-                                        >
+                                        <Pie data={analyticsData.pieData} cx="50%" cy="50%" innerRadius={90} outerRadius={120} fill="#8884d8" paddingAngle={3} dataKey="value" startAngle={90} endAngle={-270} stroke="var(--bg-card)">
                                             {analyticsData.pieData.map((entry, index) => (
-                                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                                             ))}
                                         </Pie>
-                                        <Tooltip 
-                                            contentStyle={{background:'var(--bg-card)', borderRadius:8, border:'1px solid var(--border-color)', color: 'var(--text-main)'}} 
-                                            itemStyle={{color:'var(--text-main)'}}
-                                        />
-                                        <Legend 
-                                            verticalAlign="bottom" 
-                                            height={36} 
-                                            iconType="circle"
-                                            wrapperStyle={{ color: 'var(--text-muted)' }}
-                                        />
+                                        <Tooltip contentStyle={{background:'var(--bg-card)', borderRadius:8, border:'1px solid var(--border-color)', color: 'var(--text-main)'}} itemStyle={{color:'var(--text-main)'}}/>
+                                        <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ color: 'var(--text-muted)' }}/>
                                     </PieChart>
                                 </ResponsiveContainer>
-                                
-                                {/* Текст по центру - адаптирован под темную тему */}
                                 <div style={{position:'absolute', top:'42%', left:'50%', transform:'translate(-50%, -50%)', textAlign:'center', pointerEvents:'none'}}>
                                     <div style={{fontSize:'3rem', fontWeight:800, color:'var(--text-main)', lineHeight: 1}}>{totalPercent}%</div>
                                     <div style={{color:'var(--text-muted)', fontSize:'0.85rem', fontWeight:600, marginTop:5, textTransform:'uppercase'}}>Готовность</div>
                                 </div>
                             </div>
                         ) : (
-                            /* СТОЛБЧАТАЯ ДИАГРАММА */
                             <ResponsiveContainer width="100%" height="100%">
-                                <BarChart
-                                    data={analyticsData.buildingStats}
-                                    margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                                    barSize={40}
-                                >
+                                <BarChart data={analyticsData.buildingStats} margin={{ top: 20, right: 30, left: 20, bottom: 5 }} barSize={40}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
-                                    <XAxis 
-                                        dataKey="name" 
-                                        tick={{fontSize: 12, fill:'var(--text-muted)'}} 
-                                        axisLine={false} 
-                                        tickLine={false} 
-                                    />
-                                    <YAxis 
-                                        allowDecimals={false}
-                                        axisLine={false} 
-                                        tickLine={false}
-                                        tick={{fontSize: 12, fill:'var(--text-muted)'}}
-                                    />
-                                    <Tooltip 
-                                        cursor={{fill: 'var(--bg-active)'}}
-                                        contentStyle={{background:'var(--bg-card)', borderColor:'var(--border-color)', borderRadius:8, color: 'var(--text-main)'}}
-                                        itemStyle={{color:'var(--text-main)'}}
-                                    />
-                                    <Legend 
-                                        iconType="circle"
-                                        wrapperStyle={{ color: 'var(--text-muted)' }}
-                                    />
+                                    <XAxis dataKey="name" tick={{fontSize: 12, fill:'var(--text-muted)'}} axisLine={false} tickLine={false} />
+                                    <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{fontSize: 12, fill:'var(--text-muted)'}}/>
+                                    <Tooltip cursor={{fill: 'var(--bg-active)'}} contentStyle={{background:'var(--bg-card)', borderColor:'var(--border-color)', borderRadius:8, color: 'var(--text-main)'}} itemStyle={{color:'var(--text-main)'}}/>
+                                    <Legend iconType="circle" wrapperStyle={{ color: 'var(--text-muted)' }}/>
                                     <Bar dataKey="work" name="Выполнено" stackId="a" fill="#10b981" radius={[0, 0, 4, 4]} />
-                                    {/* Исправленный цвет #94a3b8 */}
                                     <Bar dataKey="total" name="Всего задач" stackId="b" fill="#94a3b8" radius={[4, 4, 0, 0]} />
                                 </BarChart>
                             </ResponsiveContainer>
@@ -238,7 +182,6 @@ const AnalyticsPage = ({ buildings, user }) => {
                     </div>
                 </div>
 
-                {/* 3. ТАБЛИЦА ДЕТАЛИЗАЦИИ */}
                 <h3 style={{fontSize:'1.2rem', marginBottom: 20, display:'flex', alignItems:'center', gap:10, color: 'var(--text-main)'}}>
                     <FileText size={20} color="var(--accent-primary)"/> Детализация по объектам
                 </h3>
@@ -248,8 +191,8 @@ const AnalyticsPage = ({ buildings, user }) => {
                         <thead>
                             <tr>
                                 <th>Название объекта</th>
-                                <th>Прогресс СМР (Стройка)</th>
-                                <th>Прогресс ИД (Документы)</th>
+                                <th>Прогресс СМР</th>
+                                <th>Прогресс ИД</th>
                                 <th style={{textAlign:'right'}}>Действия</th>
                             </tr>
                         </thead>
@@ -281,9 +224,7 @@ const AnalyticsPage = ({ buildings, user }) => {
                                         </div>
                                     </td>
                                     <td style={{textAlign:'right'}}>
-                                        <button className="move-btn" style={{marginLeft:'auto'}}>
-                                            <ArrowRight size={20}/>
-                                        </button>
+                                        <button className="move-btn" style={{marginLeft:'auto'}}><ArrowRight size={20}/></button>
                                     </td>
                                 </tr>
                             ))}

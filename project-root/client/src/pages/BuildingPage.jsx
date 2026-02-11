@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Building2, FileText, ArrowLeft, PlusCircle, Pencil, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
+import { hasUnreadInContract } from '../utils/helpers';
 
 const BuildingPage = ({ buildings, user, actions, sysActions }) => {
     const { id } = useParams();
@@ -33,26 +34,11 @@ const BuildingPage = ({ buildings, user, actions, sysActions }) => {
         });
     };
 
-    // Статистика для карточки договора + уведомления
     const getContractStats = (contract) => {
         let total = 0, work = 0, doc = 0;
-        let hasUnread = false;
-
         contract.floors.forEach(f => f.rooms.forEach(r => {
-            // Проверка уведомлений
-            if (r.tasks) {
-                r.tasks.forEach(t => {
-                    const lastRead = localStorage.getItem(`read_comments_${t.id}`);
-                    if (t.comments && t.comments.length > 0) {
-                        if (!lastRead || new Date(t.comments[t.comments.length-1].timestamp) > new Date(lastRead)) {
-                            hasUnread = true;
-                        }
-                    }
-                });
-            }
-
             r.tasks.forEach(t => {
-                total++; // Считаем задачи
+                total++;
                 if (t.work_done) work++;
                 if (t.doc_done) doc++;
             });
@@ -61,8 +47,7 @@ const BuildingPage = ({ buildings, user, actions, sysActions }) => {
         return { 
             total, 
             workPercent: total ? Math.round((work/total)*100) : 0, 
-            docPercent: total ? Math.round((doc/total)*100) : 0,
-            hasUnread
+            docPercent: total ? Math.round((doc/total)*100) : 0
         };
     };
 
@@ -97,10 +82,23 @@ const BuildingPage = ({ buildings, user, actions, sysActions }) => {
                 <div className="dashboard-grid">
                     {filteredContracts.map((c, idx) => {
                         const stats = getContractStats(c);
+                        // ПРОВЕРКА УВЕДОМЛЕНИЙ НА ДОГОВОРЕ
+                        const hasUnread = hasUnreadInContract(c);
+
                         return (
                             <div key={c.id} className="project-card" onClick={() => navigate(`/dashboard/${building.id}/${c.id}`)}>
-                                {/* ИНДИКАТОР УВЕДОМЛЕНИЙ НА ДОГОВОРЕ */}
-                                {stats.hasUnread && <div style={{position:'absolute', top: -5, right: -5, width: 14, height: 14, background: '#ef4444', borderRadius: '50%', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.2)', zIndex: 5}}></div>}
+                                {/* КРАСНАЯ ТОЧКА */}
+                                {hasUnread && (
+                                    <div style={{
+                                        position:'absolute', top: -6, right: -6, 
+                                        width: 16, height: 16, 
+                                        background: '#ef4444', 
+                                        borderRadius: '50%', 
+                                        border: '2px solid var(--bg-body)', 
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)', 
+                                        zIndex: 5
+                                    }}></div>
+                                )}
                                 
                                 <div className="card-top">
                                     <div style={{background: 'var(--bg-active)', padding: 12, borderRadius: 12}}>
@@ -129,7 +127,6 @@ const BuildingPage = ({ buildings, user, actions, sysActions }) => {
                                 </div>
                                 <h3 style={{marginBottom: 8}}>{c.name}</h3>
 
-                                {/* Мини-статистика договора */}
                                 <div style={{marginBottom: 16}}>
                                     <div style={{display:'flex', justifyContent:'space-between', fontSize:'0.75rem', marginBottom: 4, fontWeight:600, color:'var(--text-muted)'}}>
                                         <span>СМР</span><span>{stats.workPercent}%</span>

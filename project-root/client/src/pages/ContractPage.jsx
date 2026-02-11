@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { FileText, ArrowLeft, PlusCircle, Pencil, Trash2, PieChart, Copy, GripVertical, Move, Filter, X, BarChart } from 'lucide-react';
-import { getRoomStatus, checkUnreadMessages, checkUnseenChanges } from '../utils/helpers';
+import { getRoomStatus, hasUnreadInRoom } from '../utils/helpers';
 
 const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysActions }) => {
     const { buildingId, contractId } = useParams();
@@ -29,9 +29,8 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysAc
 
     if (!contract) return <div className="content-area">Договор не найден</div>;
 
-    // Расчет аналитики по этажу
     const getFloorStats = (floor) => {
-        if (!filterGroupId) return null; // Только когда есть фильтр
+        if (!filterGroupId) return null;
         let floorVol = 0;
         let floorDoneVol = 0;
         floor.rooms.forEach(r => {
@@ -46,7 +45,6 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysAc
         return { vol: floorVol, done: floorDoneVol, percent };
     };
 
-    // Actions
     const handleAddFloor = () => sysActions.prompt("Новый этаж", "Название:", (name) => actions.addFloor(building.id, contract.id, name));
     const handleAddRoom = (floorId) => sysActions.prompt("Новое помещение", "Название:", (name) => actions.addRoom(building.id, contract.id, floorId, name));
     const handleRenameFloor = (floorId, oldName) => sysActions.prompt("Переименование", "Новое название:", (newName) => { if(newName!==oldName) actions.renameItem('floor', {buildingId: building.id, contractId: contract.id, floorId}, newName); }, oldName);
@@ -54,7 +52,6 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysAc
     const handleCopyFloor = (floorId) => sysActions.confirm("Копирование", "Дублировать этаж?", () => actions.copyItem('floor', { buildingId: building.id, contractId: contract.id, floorId }));
     const handleCopyRoom = (floorId, roomId, e) => { e.stopPropagation(); sysActions.confirm("Копирование", "Дублировать помещение?", () => actions.copyItem('room', { buildingId: building.id, contractId: contract.id, floorId, roomId })); };
 
-    // DnD
     const onDragStart = (e, type, item, index, parentId) => { if (!isReorderingMode) return; e.stopPropagation(); setDraggedItem({ type, id: item.id, index, parentId }); e.target.classList.add('dragging'); };
     const onDragEnd = (e) => { e.target.classList.remove('dragging'); setDraggedItem(null); };
     const onDrop = (e, type, targetIndex, targetParentId) => {
@@ -91,7 +88,6 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysAc
                     <div style={{background:'var(--bg-active)', padding: 10, borderRadius: '50%'}}><PieChart size={24} color="var(--accent-primary)"/></div>
                     <div><div style={{fontSize:'0.8rem', color:'var(--text-muted)'}}>Всего задач</div><div style={{fontSize:'1.2rem', fontWeight:700}}>{stats.total}</div></div>
                 </div>
-                {/* Stats cards ... */}
                 <div style={{background:'var(--bg-card)', padding: 20, borderRadius: 12, border: '1px solid var(--border-color)', display:'flex', alignItems:'center', gap: 15}}><div style={{background:'var(--status-green-bg)', padding: 10, borderRadius: '50%'}}><PieChart size={24} color="#166534"/></div><div><div style={{fontSize:'0.8rem', color:'var(--text-muted)'}}>СМР Готово</div><div style={{fontSize:'1.2rem', fontWeight:700, color:'#166534'}}>{stats.work}</div></div></div>
                 <div style={{background:'var(--bg-card)', padding: 20, borderRadius: 12, border: '1px solid var(--border-color)', display:'flex', alignItems:'center', gap: 15}}><div style={{background:'var(--status-orange-bg)', padding: 10, borderRadius: '50%'}}><PieChart size={24} color="#c2410c"/></div><div><div style={{fontSize:'0.8rem', color:'var(--text-muted)'}}>ИД Сдано</div><div style={{fontSize:'1.2rem', fontWeight:700, color:'#c2410c'}}>{stats.doc}</div></div></div>
                 <div style={{background:'var(--bg-card)', padding: 20, borderRadius: 12, border: '1px solid var(--border-color)', display:'flex', alignItems:'center', gap: 15}}><div style={{background:'#e0f2fe', padding: 10, borderRadius: '50%'}}><PieChart size={24} color="#0284c7"/></div><div><div style={{fontSize:'0.8rem', color:'var(--text-muted)'}}>Объем</div><div style={{fontSize:'1.2rem', fontWeight:700, color:'#0284c7'}}>{stats.vol.toFixed(1)}</div></div></div>
@@ -104,7 +100,6 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysAc
                         return (
                             <div key={floor.id} className="floor-block" draggable={isReorderingMode} onDragStart={(e) => onDragStart(e, 'floor', floor, floorIndex, contract.id)} onDragEnd={onDragEnd} onDragOver={(e) => { if(isReorderingMode) e.preventDefault(); }} onDrop={(e) => onDrop(e, 'floor', floorIndex, contract.id)} style={{ cursor: isReorderingMode ? 'grab' : 'default', borderStyle: isReorderingMode ? 'dashed' : 'solid' }}>
                                 
-                                {/* АНАЛИТИКА ПО ЭТАЖУ */}
                                 {floorStats && (
                                     <div style={{background: '#f8fafc', padding: '8px 24px', borderBottom: '1px solid var(--border-color)', display:'flex', gap: 20, fontSize: '0.8rem', color: 'var(--text-muted)'}}>
                                         <div style={{display:'flex', alignItems:'center', gap:6}}><BarChart size={14}/> Аналитика этажа:</div>
@@ -122,24 +117,32 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysAc
                                     {floor.rooms.map((room, roomIndex) => {
                                         const statusClass = getRoomStatus(room, filterGroupId);
                                         const isHighlighted = filterGroupId ? room.tasks.some(t => (t.groupId || 'uncategorized') === filterGroupId) : false;
-                                        
-                                        const hasUnread = checkUnreadMessages(room);
-                                        const hasUnseen = checkUnseenChanges(room);
+                                        // ПРОВЕРКА УВЕДОМЛЕНИЙ НА ПОМЕЩЕНИИ
+                                        const hasUnread = hasUnreadInRoom(room);
 
                                         return (
                                             <div key={room.id} className={`room-item ${statusClass} ${isHighlighted ? 'filtered-highlight' : ''}`} onClick={() => setSelectedRoom({ buildingId: building.id, contractId: contract.id, floorId: floor.id, room })} draggable={isReorderingMode} onDragStart={(e) => onDragStart(e, 'room', room, roomIndex, floor.id)} onDragEnd={onDragEnd} onDragOver={(e) => { if(isReorderingMode) e.preventDefault(); }} onDrop={(e) => onDrop(e, 'room', roomIndex, floor.id)} style={{cursor: isReorderingMode ? 'grab' : 'pointer'}}>
-                                                {/* Индикатор уведомлений */}
-                                                {(hasUnread || hasUnseen) && <div style={{position:'absolute', top: -5, right: -5, width: 12, height: 12, background: hasUnread ? '#ef4444' : '#3b82f6', borderRadius: '50%', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.2)', zIndex: 5}}></div>}
+                                                
+                                                {/* КРАСНАЯ ТОЧКА */}
+                                                {hasUnread && (
+                                                    <div style={{
+                                                        position:'absolute', top: -6, right: -6, 
+                                                        width: 14, height: 14, 
+                                                        background: '#ef4444', 
+                                                        borderRadius: '50%', 
+                                                        border: '2px solid white', 
+                                                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)', 
+                                                        zIndex: 5
+                                                    }}></div>
+                                                )}
                                                 
                                                 {hasEditRights && !isReorderingMode && <div style={{position:'absolute', top:4, right:4, opacity:0.6}} onClick={(e) => handleCopyRoom(floor.id, room.id, e)}><Copy size={14}/></div>}
                                                 <div className="room-name">{room.name}</div>
                                                 <div className="room-stats">
-                                                    {/* ИСПРАВЛЕННАЯ ЛОГИКА 0/2 (БАЛЛЫ) */}
                                                     {(() => {
                                                         const tasks = room.tasks || [];
                                                         const filtered = filterGroupId ? tasks.filter(t => (t.groupId || 'uncategorized') === filterGroupId) : tasks;
                                                         
-                                                        // 1 задача = 2 балла (1 за СМР, 1 за ИД)
                                                         const totalPoints = filtered.length * 2;
                                                         let donePoints = 0;
                                                         

@@ -45,12 +45,15 @@ const formatUnit = (base, power) => {
 const app = express();
 app.use(cors());
 const server = http.createServer(app);
+
+// ВАЖНО: maxHttpBufferSize увеличен до 10MB для загрузки фото
 const io = new Server(server, {
-    cors: { origin: "*", methods: ["GET", "POST"] }
+    cors: { origin: "*", methods: ["GET", "POST"] },
+    maxHttpBufferSize: 1e7 
 });
 
 // ==========================================
-// 1. ГЛОБАЛЬНЫЙ ЭКСПОРТ (FIXED)
+// 1. ГЛОБАЛЬНЫЙ ЭКСПОРТ
 // ==========================================
 app.get('/api/export/global', async (req, res) => {
     try {
@@ -90,21 +93,16 @@ app.get('/api/export/global', async (req, res) => {
 
         buildings.forEach(b => {
             let bTotal = 0, bWork = 0, bDoc = 0;
-
-            // Сортировка этажей перед экспортом
             const sortedFloors = (b.floors || []).sort((x,y) => (x.order || 0) - (y.order || 0));
 
             sortedFloors.forEach(f => {
-                // Сортировка помещений
                 const sortedRooms = (f.rooms || []).sort((x,y) => (x.order || 0) - (y.order || 0));
-
                 sortedRooms.forEach(r => {
                     r.tasks.forEach(t => {
                         bTotal++;
                         if(t.work_done) bWork++;
                         if(t.doc_done) bDoc++;
 
-                        // Добавляем в детализацию
                         const row = detailSheet.addRow({
                             b_name: b.name,
                             floor: f.name,
@@ -116,7 +114,6 @@ app.get('/api/export/global', async (req, res) => {
                             st_doc: t.doc_done ? 'СДАНО' : 'Нет акта'
                         });
                         
-                        // Цвета для ячеек
                         const green = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } };
                         const red = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } };
 
@@ -129,7 +126,6 @@ app.get('/api/export/global', async (req, res) => {
                 });
             });
 
-            // Добавляем в сводку
             summarySheet.addRow({
                 name: b.name,
                 total: bTotal,
@@ -152,7 +148,7 @@ app.get('/api/export/global', async (req, res) => {
 });
 
 // ==========================================
-// 2. ЭКСПОРТ КОНКРЕТНОГО ДОМА (FIXED)
+// 2. ЭКСПОРТ КОНКРЕТНОГО ДОМА
 // ==========================================
 app.get('/api/export/:buildingId', async (req, res) => {
     try {
@@ -166,7 +162,6 @@ app.get('/api/export/:buildingId', async (req, res) => {
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Отчет');
 
-        // Настройка колонок
         worksheet.columns = [
             { header: 'Этаж', key: 'floor', width: 20 },
             { header: 'Помещение', key: 'room', width: 25 },
@@ -177,14 +172,12 @@ app.get('/api/export/:buildingId', async (req, res) => {
             { header: 'ИД (Доки)', key: 'doc', width: 18, style: { alignment: { horizontal: 'center' } } },
         ];
 
-        // Стилизация заголовка
         const headerRow = worksheet.getRow(1);
         headerRow.font = { bold: true, size: 12 };
         headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
         headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
         headerRow.height = 25;
 
-        // Сортировка перед выводом (чтобы соответствовало порядку на экране)
         const sortedFloors = (building.floors || []).sort((x,y) => (x.order || 0) - (y.order || 0));
 
         sortedFloors.forEach(floor => {
@@ -213,36 +206,22 @@ app.get('/api/export/:buildingId', async (req, res) => {
                             doc: task.doc_done ? 'ПОДПИСАНО' : 'Нет акта'
                         });
 
-                        const green = { argb: 'FFC6EFCE' }; // Зеленый
-                        const red = { argb: 'FFFFC7CE' };   // Красный
+                        const green = { argb: 'FFC6EFCE' };
+                        const red = { argb: 'FFFFC7CE' };
 
-                        // СМР
-                        if (task.work_done) {
-                            row.getCell('work').fill = { type: 'pattern', pattern: 'solid', fgColor: green };
-                        } else {
-                             row.getCell('work').fill = { type: 'pattern', pattern: 'solid', fgColor: red };
-                        }
+                        if (task.work_done) row.getCell('work').fill = { type: 'pattern', pattern: 'solid', fgColor: green };
+                        else row.getCell('work').fill = { type: 'pattern', pattern: 'solid', fgColor: red };
 
-                        // ИД
-                        if (task.doc_done) {
-                            row.getCell('doc').fill = { type: 'pattern', pattern: 'solid', fgColor: green };
-                        } else {
-                            row.getCell('doc').fill = { type: 'pattern', pattern: 'solid', fgColor: red };
-                        }
+                        if (task.doc_done) row.getCell('doc').fill = { type: 'pattern', pattern: 'solid', fgColor: green };
+                        else row.getCell('doc').fill = { type: 'pattern', pattern: 'solid', fgColor: red };
                     });
                 }
             });
         });
 
-        // Границы таблицы
         worksheet.eachRow((row, rowNumber) => {
             row.eachCell((cell) => {
-                cell.border = {
-                    top: { style: 'thin' },
-                    left: { style: 'thin' },
-                    bottom: { style: 'thin' },
-                    right: { style: 'thin' }
-                };
+                cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
             });
         });
 
