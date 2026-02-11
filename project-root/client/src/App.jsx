@@ -18,7 +18,7 @@ import LogsPage from './pages/LogsPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 
 // --- Protected Layout Component ---
-const ProtectedLayout = ({ user, buildings, logout, theme, toggleTheme, selectedRoom, setSelectedRoom, actions, groups, filterGroupId, filterContractId, filterType, sysActions }) => {
+const ProtectedLayout = ({ user, buildings, logout, theme, toggleTheme, selectedRoom, setSelectedRoom, actions, groups, filterGroupId, sysActions }) => {
     if (!user) return <Navigate to="/login" replace />;
 
     return (
@@ -36,8 +36,6 @@ const ProtectedLayout = ({ user, buildings, logout, theme, toggleTheme, selected
                     actions={actions}
                     groups={groups}
                     filterGroupId={filterGroupId}
-                    filterContractId={filterContractId}
-                    filterType={filterType}
                     sysActions={sysActions}
                 />
             )}
@@ -54,12 +52,7 @@ function App() {
   const [allUsers, setAllUsers] = useState([]);
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [loginInput, setLoginInput] = useState({ username: '', password: '' });
-  
-  // ФИЛЬТРЫ
   const [filterGroupId, setFilterGroupId] = useState('');
-  const [filterContractId, setFilterContractId] = useState('');
-  const [filterType, setFilterType] = useState('all'); // 'all', 'smr', 'mtr'
-
   const [modalConfig, setModalConfig] = useState(null);
 
   const navigate = useNavigate();
@@ -98,20 +91,26 @@ function App() {
 
   useEffect(() => {
     socket.on('init_data', (data) => {
+      // Сортировка данных при получении
       const sorted = data.map(b => ({
           ...b,
-          floors: (b.floors || []).sort((a,b) => (a.order||0) - (b.order||0)).map(f => ({
-              ...f,
-              rooms: (f.rooms || []).sort((a,b) => (a.order||0) - (b.order||0))
+          contracts: (b.contracts || []).sort((a,b) => (a.order||0) - (b.order||0)).map(c => ({
+             ...c,
+             floors: (c.floors || []).sort((a,b) => (a.order||0) - (b.order||0)).map(f => ({
+                  ...f,
+                  rooms: (f.rooms || []).sort((a,b) => (a.order||0) - (b.order||0))
+             }))
           }))
       }));
       setBuildings(sorted);
       
+      // Обновление selectedRoom для перерисовки модалки
       if (selectedRoom) {
         const b = sorted.find(b => b.id === selectedRoom.buildingId);
-        const f = b?.floors.find(f => f.id === selectedRoom.floorId);
+        const c = b?.contracts.find(c => c.id === selectedRoom.contractId);
+        const f = c?.floors.find(f => f.id === selectedRoom.floorId);
         const r = f?.rooms.find(r => r.id === selectedRoom.room.id);
-        if (r) setSelectedRoom({ ...selectedRoom, room: r, contracts: b.contracts });
+        if (r) setSelectedRoom({ ...selectedRoom, room: r });
       }
     });
 
@@ -160,44 +159,56 @@ function App() {
 
   const actions = {
       createBuilding: (name) => emitAction('create_building', { name }),
-      addFloor: (buildingId, name) => emitAction('add_floor', { buildingId, name }),
-      addRoom: (buildingId, floorId, name) => emitAction('add_room', { buildingId, floorId, name }),
+      createContract: (buildingId, name) => emitAction('create_contract', { buildingId, name }),
+      
+      addFloor: (buildingId, contractId, name) => emitAction('add_floor', { buildingId, contractId, name }),
+      addRoom: (buildingId, contractId, floorId, name) => emitAction('add_room', { buildingId, contractId, floorId, name }),
+      
       deleteItem: (type, ids) => {
             emitAction('delete_item', { type, ids });
             if (type === 'building') navigate('/dashboard');
       },
-      reorderItem: (type, buildingId, floorId, sourceIndex, destinationIndex) => {
-          emitAction('reorder_item', { type, buildingId, floorId, sourceIndex, destinationIndex });
+      
+      // DnD Reorder
+      reorderItem: (type, buildingId, contractId, floorId, sourceIndex, destinationIndex) => {
+          emitAction('reorder_item', { type, buildingId, contractId, floorId, sourceIndex, destinationIndex });
       },
-      moveItem: (type, direction, ids) => emitAction('move_item', { type, direction, ids }),
+      
       renameItem: (type, ids, newName) => emitAction('rename_item', { type, ids, newName }),
+      
+      // Copy
       copyItem: (type, ids) => emitAction('copy_item', { type, ids }),
       
       createGroup: (name) => emitAction('create_group', { name }),
       deleteGroup: (groupId) => emitAction('delete_group', { groupId }),
-
-      // CONTRACTS
-      createContract: (buildingId, name) => emitAction('create_contract', { buildingId, name }),
-      deleteContract: (buildingId, contractId) => emitAction('delete_contract', { buildingId, contractId }),
       
-      // TASKS (SMR)
-      addTask: (buildingId, floorId, roomId, taskData) => {
+      addTask: (buildingId, contractId, floorId, roomId, taskData) => {
           emitAction('add_task', { 
               buildingId, 
+              contractId,
               floorId, 
               roomId, 
               taskName: taskData.name, 
               groupId: taskData.groupId, 
-              contractId: taskData.contractId, // New field
               volume: taskData.volume, 
               unit: taskData.unit, 
               unit_power: taskData.unit_power
           });
       },
-      editTask: (buildingId, floorId, roomId, taskId, data) => {
-          emitAction('edit_task', { buildingId, floorId, roomId, taskId, data });
+
+      addMaterial: (buildingId, contractId, floorId, roomId, taskId, matData) => {
+          emitAction('add_material', {
+              buildingId, contractId, floorId, roomId, taskId,
+              name: matData.name,
+              unit: matData.unit,
+              coefficient: matData.coefficient
+          });
       },
-      toggleTask: (buildingId, floorId, roomId, taskId, field, value) => {
+      
+      editTask: (buildingId, contractId, floorId, roomId, taskId, data) => {
+          emitAction('edit_task', { buildingId, contractId, floorId, roomId, taskId, data });
+      },
+      toggleTask: (buildingId, contractId, floorId, roomId, taskId, field, value) => {
         if (user.role === 'director' || user.role === 'architect') return; 
         if (field === 'work_done' && !['prorab', 'admin'].includes(user.role)) {
             sysActions.alert("Нет прав", "Только Прораб или Админ может отмечать выполнение работ!"); return;
@@ -205,21 +216,13 @@ function App() {
         if (field === 'doc_done' && !['pto', 'admin'].includes(user.role)) {
             sysActions.alert("Нет прав", "Только ПТО или Админ может принимать документацию!"); return;
         }
-        emitAction('toggle_task_status', { buildingId, floorId, roomId, taskId, field, value: !value });
+        emitAction('toggle_task_status', { buildingId, contractId, floorId, roomId, taskId, field, value: !value });
       },
-      updateTaskDates: (buildingId, floorId, roomId, taskId, dates) => {
-          emitAction('update_task_dates', { buildingId, floorId, roomId, taskId, dates });
+      updateTaskDates: (buildingId, contractId, floorId, roomId, taskId, dates) => {
+          emitAction('update_task_dates', { buildingId, contractId, floorId, roomId, taskId, dates });
       },
-      addTaskComment: (buildingId, floorId, roomId, taskId, text) => {
-          emitAction('add_task_comment', { buildingId, floorId, roomId, taskId, text });
-      },
-
-      // MTR (Materials)
-      addMtr: (buildingId, floorId, roomId, taskId, mtrData) => {
-          emitAction('add_mtr', { buildingId, floorId, roomId, taskId, ...mtrData });
-      },
-      deleteMtr: (buildingId, floorId, roomId, taskId, mtrId) => {
-          emitAction('delete_mtr', { buildingId, floorId, roomId, taskId, mtrId });
+      addTaskComment: (buildingId, contractId, floorId, roomId, taskId, text) => {
+          emitAction('add_task_comment', { buildingId, contractId, floorId, roomId, taskId, text });
       }
   };
 
@@ -242,29 +245,12 @@ function App() {
                     actions={actions}
                     groups={groups}
                     filterGroupId={filterGroupId}
-                    filterContractId={filterContractId}
-                    filterType={filterType}
                     sysActions={sysActions}
                 />
               }>
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
                   <Route path="/dashboard" element={<DashboardIndex buildings={buildings} user={user} actions={actions} filterGroupId={filterGroupId} setFilterGroupId={setFilterGroupId} groups={groups} sysActions={sysActions} />} />
-                  <Route path="/dashboard/:id" element={
-                      <BuildingPage 
-                          buildings={buildings} 
-                          user={user} 
-                          actions={actions} 
-                          setSelectedRoom={setSelectedRoom} 
-                          filterGroupId={filterGroupId} 
-                          setFilterGroupId={setFilterGroupId} 
-                          filterContractId={filterContractId}
-                          setFilterContractId={setFilterContractId}
-                          filterType={filterType}
-                          setFilterType={setFilterType}
-                          groups={groups} 
-                          sysActions={sysActions} 
-                      />
-                  } />
+                  <Route path="/dashboard/:id" element={<BuildingPage buildings={buildings} user={user} actions={actions} setSelectedRoom={setSelectedRoom} filterGroupId={filterGroupId} setFilterGroupId={setFilterGroupId} groups={groups} sysActions={sysActions} />} />
                   <Route path="/analytics" element={['admin', 'director'].includes(user?.role) ? <AnalyticsPage buildings={buildings} user={user} /> : <Navigate to="/dashboard"/>} />
                   <Route path="/groups" element={user?.role === 'admin' ? <GroupsPage user={user} groups={groups} actions={actions} buildings={buildings} setSelectedRoom={setSelectedRoom} filterGroupId={filterGroupId} setFilterGroupId={setFilterGroupId} sysActions={sysActions} /> : <Navigate to="/dashboard"/>} />
                   <Route path="/users" element={user?.role === 'admin' ? <UsersPage user={user} allUsers={allUsers} setAllUsers={setAllUsers} refreshUsers={() => socket.emit('get_users_list', { user })} sysActions={sysActions} /> : <Navigate to="/dashboard"/>} />
