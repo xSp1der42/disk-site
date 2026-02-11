@@ -24,11 +24,9 @@
   --status-red-bg: #fee2e2;
   --status-red-text: #991b1b;
   
-  /* Желтый (Начато) */
   --status-yellow-bg: #fef9c3; 
   --status-yellow-text: #854d0e;
 
-  /* Оранжевый (Готово СМР или ИД) */
   --status-orange-bg: #ffedd5;
   --status-orange-text: #c2410c;
 
@@ -68,11 +66,9 @@
   --status-red-bg: #7f1d1d;
   --status-red-text: #fee2e2;
   
-  /* Желтый для темной темы */
   --status-yellow-bg: #713f12;
   --status-yellow-text: #fef9c3;
 
-  /* Оранжевый для темной темы */
   --status-orange-bg: #7c2d12;
   --status-orange-text: #ffedd5;
 
@@ -102,7 +98,6 @@ body {
 
 .app-wrapper { display: flex; height: 100vh; }
 
-/* --- Animations --- */
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 @keyframes scaleIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
@@ -285,6 +280,37 @@ body {
 
 .content-area { flex: 1; overflow-y: auto; padding: 32px; }
 
+/* Contracts & Floors */
+.contract-section {
+    margin-bottom: 32px;
+    background: var(--bg-body);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    overflow: hidden;
+}
+.contract-header {
+    background: var(--bg-card);
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.contract-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.contract-body {
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
 /* Dashboard Grid */
 .dashboard-grid { 
   display: grid; 
@@ -339,7 +365,6 @@ body {
   box-shadow: var(--shadow-sm); 
   border: 1px solid var(--border-color); 
   overflow: hidden; 
-  /* DnD Styles */
   transition: border 0.2s;
 }
 .floor-block.dragging-over {
@@ -354,7 +379,7 @@ body {
   display: flex; 
   justify-content: space-between; 
   align-items: center; 
-  cursor: grab; /* Показываем, что можно тянуть */
+  cursor: grab;
 }
 .floor-header:active { cursor: grabbing; }
 
@@ -380,10 +405,9 @@ body {
 .room-item:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); z-index: 2; }
 .room-item:active { cursor: grabbing; }
 
-/* Filter Highlight */
 .room-item.filtered-highlight {
-    border-color: #ffffff; /* Белая обводка */
-    box-shadow: 0 0 0 2px var(--accent-primary), 0 4px 6px rgba(0,0,0,0.1); /* Двойная рамка для контраста */
+    border-color: #ffffff;
+    box-shadow: 0 0 0 2px var(--accent-primary), 0 4px 6px rgba(0,0,0,0.1);
 }
 [data-theme="light"] .room-item.filtered-highlight {
      border-color: #ffffff; 
@@ -802,6 +826,32 @@ body {
 .btn-sys-cancel { background: transparent; color: var(--text-muted); border: 1px solid var(--border-color); }
 .btn-sys-cancel:hover { background: var(--bg-hover); color: var(--text-main); }
 
+/* Tab Switcher */
+.tab-switcher {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    background: var(--bg-body);
+    padding: 4px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+.tab-btn {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: 8px;
+    border-radius: 6px;
+    color: var(--text-muted);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.tab-btn.active {
+    background: var(--bg-card);
+    color: var(--text-main);
+    box-shadow: var(--shadow-sm);
+}
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 8px; height: 8px; }

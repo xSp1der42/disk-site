@@ -36,8 +36,10 @@ module.exports = function(io, socket) {
             socket.emit('login_error', 'Ошибка сервера');
         }
     });
-    
-    // --- Структура ---
+
+    // ===============================================
+    // СТРУКТУРА: ОБЪЕКТЫ (Buildings)
+    // ===============================================
     socket.on('create_building', async ({ name, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
@@ -49,12 +51,15 @@ module.exports = function(io, socket) {
         } catch(e) { console.error(e); }
     });
 
-    socket.on('add_contract', async ({ buildingId, name, user }) => {
+    // ===============================================
+    // СТРУКТУРА: ДОГОВОРЫ (Contracts)
+    // ===============================================
+    socket.on('create_contract', async ({ buildingId, name, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
             const b = await Building.findOne({ id: buildingId });
             if (b) {
-                const order = b.contracts ? b.contracts.length : 0;
+                const order = b.contracts.length;
                 b.contracts.push({ id: genId(), name: name, order: order, floors: [] });
                 await b.save();
                 await broadcastBuildings();
@@ -63,21 +68,27 @@ module.exports = function(io, socket) {
         } catch(e) { console.error(e); }
     });
 
+    // ===============================================
+    // СТРУКТУРА: ЭТАЖИ (Floors)
+    // ===============================================
     socket.on('add_floor', async ({ buildingId, contractId, name, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
             const b = await Building.findOne({ id: buildingId });
-            const c = b?.contracts.find(x => x.id === contractId);
-            if (c) {
-                const order = c.floors.length;
-                c.floors.push({ id: genId(), name: name, order: order, rooms: [] });
+            const contract = b?.contracts.find(c => c.id === contractId);
+            if (contract) {
+                const order = contract.floors.length;
+                contract.floors.push({ id: genId(), name: name, order: order, rooms: [] });
                 await b.save();
                 await broadcastBuildings();
-                createLog(io, user.username, user.role, 'Структура', `Договор: ${c.name}, Добавлен этаж: ${name}`);
+                createLog(io, user.username, user.role, 'Структура', `Договор: ${contract.name}, Добавлен этаж: ${name}`);
             }
         } catch(e) { console.error(e); }
     });
 
+    // ===============================================
+    // СТРУКТУРА: ПОМЕЩЕНИЯ (Rooms)
+    // ===============================================
     socket.on('add_room', async ({ buildingId, contractId, floorId, name, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
@@ -89,12 +100,15 @@ module.exports = function(io, socket) {
                 f.rooms.push({ id: genId(), name: name, order: order, tasks: [] });
                 await b.save();
                 await broadcastBuildings();
-                createLog(io, user.username, user.role, 'Структура', `Этаж: ${f.name}, Добавлено помещение: ${name}`);
+                createLog(io, user.username, user.role, 'Структура', `Этаж: ${f.name}, Помещение: ${name}`);
             }
         } catch(e) { console.error(e); }
     });
 
-    socket.on('add_task', async ({ buildingId, contractId, floorId, roomId, taskData, user }) => {
+    // ===============================================
+    // СТРУКТУРА: ЗАДАЧИ (Tasks - SMR/MTR)
+    // ===============================================
+    socket.on('add_task', async ({ buildingId, contractId, floorId, roomId, taskName, groupId, volume, unit, unit_power, type, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
             const b = await Building.findOne({ id: buildingId });
@@ -104,13 +118,12 @@ module.exports = function(io, socket) {
             if (r) {
                 r.tasks.push({ 
                     id: genId(), 
-                    name: taskData.name, 
-                    type: taskData.type || 'smr',
-                    package: taskData.package || '',
-                    groupId: taskData.groupId || null,
-                    volume: parseFloat(taskData.volume) || 0,
-                    unit: taskData.unit || 'шт',
-                    unit_power: taskData.unit_power || '',
+                    name: taskName, 
+                    groupId: groupId || null,
+                    volume: parseFloat(volume) || 0,
+                    unit: unit || 'шт',
+                    unit_power: unit_power || '',
+                    type: type || 'smr', // 'smr' | 'mtr'
                     work_done: false, 
                     doc_done: false,
                     start_date: null,
@@ -119,140 +132,71 @@ module.exports = function(io, socket) {
                 });
                 await b.save();
                 await broadcastBuildings();
+                createLog(io, user.username, user.role, 'Работы', `Пом: ${r.name}, Добавлено (${type}): ${taskName}`);
             }
         } catch(e) { console.error(e); }
     });
-    
-    // --- НОВОЕ: Копирование ---
-    socket.on('copy_item', async ({ type, ids, user }) => {
+
+    socket.on('edit_task', async ({ buildingId, contractId, floorId, roomId, taskId, data, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
-            const b = await Building.findOne({ id: ids.buildingId });
-            if (!b) return;
-
-            const copyTasks = (tasks) => tasks.map(t => ({
-                id: genId(),
-                name: t.name,
-                type: t.type,
-                package: t.package,
-                groupId: t.groupId,
-                volume: t.volume,
-                unit: t.unit,
-                unit_power: t.unit_power,
-                work_done: false, // Сброс статуса
-                doc_done: false,  // Сброс статуса
-                start_date: null,
-                end_date: null,
-                comments: []
-            }));
-
-            const copyRooms = (rooms) => rooms.map(r => ({
-                id: genId(),
-                name: r.name,
-                order: r.order,
-                tasks: copyTasks(r.tasks)
-            }));
-
-            if (type === 'contract') {
-                const c = b.contracts.find(x => x.id === ids.contractId);
-                if (c) {
-                    const newFloors = c.floors.map(f => ({
-                        id: genId(),
-                        name: f.name,
-                        order: f.order,
-                        rooms: copyRooms(f.rooms)
-                    }));
-                    b.contracts.push({
-                        id: genId(),
-                        name: `${c.name} (Копия)`,
-                        order: b.contracts.length,
-                        floors: newFloors
-                    });
-                    createLog(io, user.username, user.role, 'Копирование', `Скопирован договор: ${c.name}`);
-                }
-            } else if (type === 'floor') {
-                const c = b.contracts.find(x => x.id === ids.contractId);
-                const f = c?.floors.find(x => x.id === ids.floorId);
-                if (f) {
-                    c.floors.push({
-                        id: genId(),
-                        name: `${f.name} (Копия)`,
-                        order: c.floors.length,
-                        rooms: copyRooms(f.rooms)
-                    });
-                    createLog(io, user.username, user.role, 'Копирование', `Скопирован этаж: ${f.name}`);
-                }
-            } else if (type === 'room') {
-                const c = b.contracts.find(x => x.id === ids.contractId);
-                const f = c?.floors.find(x => x.id === ids.floorId);
-                const r = f?.rooms.find(x => x.id === ids.roomId);
-                if (r) {
-                    f.rooms.push({
-                        id: genId(),
-                        name: `${r.name} (Копия)`,
-                        order: f.rooms.length,
-                        tasks: copyTasks(r.tasks)
-                    });
-                    createLog(io, user.username, user.role, 'Копирование', `Скопировано помещение: ${r.name}`);
-                }
-            }
+            const b = await Building.findOne({ id: buildingId });
+            const c = b?.contracts.find(x => x.id === contractId);
+            const f = c?.floors.find(x => x.id === floorId);
+            const r = f?.rooms.find(x => x.id === roomId);
+            const t = r?.tasks.find(x => x.id === taskId);
             
-            await b.save();
-            await broadcastBuildings();
-
+            if (t) {
+                if (data.name) t.name = data.name;
+                if (data.groupId !== undefined) t.groupId = data.groupId;
+                if (data.volume !== undefined) t.volume = parseFloat(data.volume);
+                if (data.unit !== undefined) t.unit = data.unit;
+                if (data.unit_power !== undefined) t.unit_power = data.unit_power;
+                
+                await b.save();
+                await broadcastBuildings();
+                createLog(io, user.username, user.role, 'Редактирование', `Пом: ${r.name}, Изменена работа: ${t.name}`);
+            }
         } catch (e) { console.error(e); }
     });
 
-    // --- Остальные обработчики ---
-    // (без изменений, скопированы из предыдущей версии для полноты файла)
-    socket.on('rename_item', async ({ type, ids, newName, user }) => {
-        if (!user || !canEditStructure(user.role)) return;
-        try {
-            const b = await Building.findOne({ id: ids.buildingId });
-            if (!b) return;
-
-            if (type === 'building') {
-                b.name = newName;
-            } else if (type === 'contract') {
-                const c = b.contracts.find(x => x.id === ids.contractId);
-                if(c) c.name = newName;
-            } else if (type === 'floor') {
-                const c = b.contracts.find(x => x.id === ids.contractId);
-                const f = c?.floors.find(x => x.id === ids.floorId);
-                if(f) f.name = newName;
-            } else if (type === 'room') {
-                const c = b.contracts.find(x => x.id === ids.contractId);
-                const f = c?.floors.find(x => x.id === ids.floorId);
-                const r = f?.rooms.find(x => x.id === ids.roomId);
-                if(r) r.name = newName;
-            } 
-            await b.save();
-            await broadcastBuildings();
-        } catch(e) { console.error(e); }
-    });
-
+    // ===============================================
+    // ОПЕРАЦИИ: УДАЛЕНИЕ, ПЕРЕИМЕНОВАНИЕ, КОПИРОВАНИЕ
+    // ===============================================
     socket.on('delete_item', async ({ type, ids, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
             if (type === 'building') {
                 await Building.deleteOne({ id: ids.buildingId });
+                createLog(io, user.username, user.role, 'Удаление', `Удален объект ID: ${ids.buildingId}`);
             } else {
                 const b = await Building.findOne({ id: ids.buildingId });
                 if (b) {
                     if (type === 'contract') {
-                        b.contracts = b.contracts.filter(x => x.id !== ids.contractId);
-                    } else if (type === 'floor') {
+                        b.contracts = b.contracts.filter(c => c.id !== ids.contractId);
+                        createLog(io, user.username, user.role, 'Удаление', `Удален договор в объекте ${b.name}`);
+                    } else {
                         const c = b.contracts.find(x => x.id === ids.contractId);
-                        if(c) c.floors = c.floors.filter(x => x.id !== ids.floorId);
-                    } else if (type === 'room') {
-                        const c = b.contracts.find(x => x.id === ids.contractId);
-                        const f = c?.floors.find(x => x.id === ids.floorId);
-                        if(f) f.rooms = f.rooms.filter(x => x.id !== ids.roomId);
-                    } else if (type === 'task') {
-                        const c = b.contracts.find(x => x.id === ids.contractId);
-                        const f = c?.floors.find(x => x.id === ids.floorId);
-                        const r = f?.rooms.find(x => x.id === ids.roomId);
-                        if (r) r.tasks = r.tasks.filter(x => x.id !== ids.taskId);
+                        if (c) {
+                            if (type === 'floor') {
+                                c.floors = c.floors.filter(f => f.id !== ids.floorId);
+                                createLog(io, user.username, user.role, 'Удаление', `Удален этаж в договоре ${c.name}`);
+                            } else {
+                                const f = c.floors.find(x => x.id === ids.floorId);
+                                if (f) {
+                                    if (type === 'room') {
+                                        f.rooms = f.rooms.filter(r => r.id !== ids.roomId);
+                                        createLog(io, user.username, user.role, 'Удаление', `Удалено помещение в ${f.name}`);
+                                    } else if (type === 'task') {
+                                        const r = f.rooms.find(x => x.id === ids.roomId);
+                                        if (r) {
+                                            r.tasks = r.tasks.filter(t => t.id !== ids.taskId);
+                                            createLog(io, user.username, user.role, 'Удаление', `Удалена задача в ${r.name}`);
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                     await b.save();
                 }
@@ -261,28 +205,83 @@ module.exports = function(io, socket) {
         } catch(e) { console.error(e); }
     });
 
-    socket.on('reorder_item', async ({ type, ids, sourceIndex, destinationIndex, user }) => {
+    socket.on('rename_item', async ({ type, ids, newName, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
             const b = await Building.findOne({ id: ids.buildingId });
             if (!b) return;
 
-            let arr = null;
-
-            if (type === 'contract') {
-                b.contracts.sort((a,b) => (a.order||0) - (b.order||0));
-                arr = b.contracts;
-            } else if (type === 'floor') {
+            if (type === 'building') { b.name = newName; }
+            else {
                 const c = b.contracts.find(x => x.id === ids.contractId);
                 if (c) {
-                    c.floors.sort((a,b) => (a.order||0) - (b.order||0));
-                    arr = c.floors;
+                    if (type === 'contract') { c.name = newName; }
+                    else {
+                        const f = c.floors.find(x => x.id === ids.floorId);
+                        if (f) {
+                            if (type === 'floor') { f.name = newName; }
+                            else if (type === 'room') {
+                                const r = f.rooms.find(x => x.id === ids.roomId);
+                                if (r) r.name = newName;
+                            }
+                        }
+                    }
+                }
+            }
+            await b.save();
+            await broadcastBuildings();
+        } catch(e) { console.error(e); }
+    });
+
+    socket.on('copy_item', async ({ type, ids, user }) => {
+        if (!user || !canEditStructure(user.role)) return;
+        try {
+            const b = await Building.findOne({ id: ids.buildingId });
+            if (!b) return;
+            const c = b.contracts.find(x => x.id === ids.contractId);
+            if (!c) return;
+
+            const copyTasks = (tasks) => tasks.map(t => ({
+                id: genId(), name: t.name, groupId: t.groupId, volume: t.volume, unit: t.unit,
+                unit_power: t.unit_power, type: t.type, work_done: false, doc_done: false, comments: []
+            }));
+
+            if (type === 'floor') {
+                const f = c.floors.find(x => x.id === ids.floorId);
+                if (f) {
+                    const newRooms = f.rooms.map(r => ({ id: genId(), name: r.name, order: r.order, tasks: copyTasks(r.tasks) }));
+                    c.floors.push({ id: genId(), name: `${f.name} (Копия)`, order: c.floors.length, rooms: newRooms });
+                    createLog(io, user.username, user.role, 'Копирование', `Скопирован этаж: ${f.name}`);
                 }
             } else if (type === 'room') {
-                const c = b.contracts.find(x => x.id === ids.contractId);
-                const f = c?.floors.find(x => x.id === ids.floorId);
+                const f = c.floors.find(x => x.id === ids.floorId);
+                const r = f?.rooms.find(x => x.id === ids.roomId);
+                if (r) {
+                    f.rooms.push({ id: genId(), name: `${r.name} (Копия)`, order: f.rooms.length, tasks: copyTasks(r.tasks) });
+                    createLog(io, user.username, user.role, 'Копирование', `Скопировано помещение: ${r.name}`);
+                }
+            }
+            await b.save();
+            await broadcastBuildings();
+        } catch(e) { console.error(e); }
+    });
+
+    socket.on('reorder_item', async ({ type, buildingId, contractId, floorId, sourceIndex, destinationIndex, user }) => {
+        if (!user || !canEditStructure(user.role)) return;
+        try {
+            const b = await Building.findOne({ id: buildingId });
+            if (!b) return;
+            const c = b.contracts.find(x => x.id === contractId);
+            if (!c) return;
+
+            let arr = null;
+            if (type === 'floor') {
+                c.floors.sort((a,b) => (a.order || 0) - (b.order || 0));
+                arr = c.floors;
+            } else if (type === 'room') {
+                const f = c.floors.find(x => x.id === floorId);
                 if (f) {
-                    f.rooms.sort((a,b) => (a.order||0) - (b.order||0));
+                    f.rooms.sort((a,b) => (a.order || 0) - (b.order || 0));
                     arr = f.rooms;
                 }
             }
@@ -296,24 +295,198 @@ module.exports = function(io, socket) {
             }
         } catch (e) { console.error(e); }
     });
-    
-    socket.on('toggle_task_status', async ({ buildingId, contractId, floorId, roomId, taskId, field, value, user }) => {
-        if (!user || ['director', 'architect'].includes(user.role)) return;
-        if (field === 'work_done' && !['prorab', 'admin'].includes(user.role)) return;
-        if (field === 'doc_done' && !['pto', 'admin'].includes(user.role)) return;
 
+    // Перемещение стрелочками (Объекты и Договоры)
+    socket.on('move_item', async ({ type, direction, ids, user }) => {
+        if (!user || !canEditStructure(user.role)) return;
+        try {
+            if (type === 'building') {
+                let buildings = await Building.find().sort({ order: 1 });
+                const idx = buildings.findIndex(b => b.id === ids.buildingId);
+                if (idx === -1) return;
+                
+                const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+                if (swapIdx >= 0 && swapIdx < buildings.length) {
+                    const temp = buildings[idx].order;
+                    buildings[idx].order = buildings[swapIdx].order;
+                    buildings[swapIdx].order = temp;
+                    // Fix same order conflict
+                    if(buildings[idx].order === buildings[swapIdx].order) {
+                        buildings[idx].order = idx; buildings[swapIdx].order = swapIdx;
+                    }
+                    await buildings[idx].save();
+                    await buildings[swapIdx].save();
+                    await broadcastBuildings();
+                }
+            } else if (type === 'contract') {
+                const b = await Building.findOne({ id: ids.buildingId });
+                if (b) {
+                    const idx = b.contracts.findIndex(c => c.id === ids.contractId);
+                    if (idx === -1) return;
+                    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+                    if (swapIdx >= 0 && swapIdx < b.contracts.length) {
+                        const temp = b.contracts[idx];
+                        b.contracts[idx] = b.contracts[swapIdx];
+                        b.contracts[swapIdx] = temp;
+                        // update orders
+                        b.contracts.forEach((c, i) => c.order = i);
+                        await b.save();
+                        await broadcastBuildings();
+                    }
+                }
+            }
+        } catch(e) { console.error(e); }
+    });
+
+    // ===============================================
+    // СТАТУСЫ И ЛОГИКА
+    // ===============================================
+    socket.on('toggle_task_status', async ({ buildingId, contractId, floorId, roomId, taskId, field, value, user }) => {
         try {
             const b = await Building.findOne({ id: buildingId });
             const c = b?.contracts.find(x => x.id === contractId);
             const f = c?.floors.find(x => x.id === floorId);
             const r = f?.rooms.find(x => x.id === roomId);
             const task = r?.tasks.find(x => x.id === taskId);
-
             if (task) {
                 task[field] = value;
                 await b.save();
                 await broadcastBuildings();
+                
+                const typeLabel = task.type === 'mtr' ? 'МТР' : 'СМР';
+                const actionLabel = field === 'work_done' ? (task.type==='mtr'?'На объекте':'Сделано') : (task.type==='mtr'?'Проверено':'ИД сдана');
+                const statusLabel = value ? 'Да' : 'Нет';
+                createLog(io, user.username, user.role, `Статус ${typeLabel}`, `${r.name} -> ${task.name}: ${actionLabel} = ${statusLabel}`);
             }
         } catch(e) { console.error(e); }
+    });
+
+    socket.on('update_task_dates', async ({ buildingId, contractId, floorId, roomId, taskId, dates, user }) => {
+        if (!user || !['admin', 'architect'].includes(user.role)) return;
+        try {
+            const b = await Building.findOne({ id: buildingId });
+            const c = b?.contracts.find(x => x.id === contractId);
+            const f = c?.floors.find(x => x.id === floorId);
+            const r = f?.rooms.find(x => x.id === roomId);
+            const t = r?.tasks.find(x => x.id === taskId);
+            if (t) {
+                t.start_date = dates.start ? new Date(dates.start) : null;
+                t.end_date = dates.end ? new Date(dates.end) : null;
+                await b.save();
+                await broadcastBuildings();
+            }
+        } catch (e) { console.error(e); }
+    });
+
+    socket.on('add_task_comment', async ({ buildingId, contractId, floorId, roomId, taskId, text, user }) => {
+        if (!user) return;
+        try {
+            const b = await Building.findOne({ id: buildingId });
+            const c = b?.contracts.find(x => x.id === contractId);
+            const f = c?.floors.find(x => x.id === floorId);
+            const r = f?.rooms.find(x => x.id === roomId);
+            const t = r?.tasks.find(x => x.id === taskId);
+            if (t) {
+                t.comments.push({
+                    id: genId(), text, author: `${user.surname} ${user.name}`, role: user.role, timestamp: new Date()
+                });
+                await b.save();
+                await broadcastBuildings();
+            }
+        } catch (e) { console.error(e); }
+    });
+
+    // ===============================================
+    // ОБЩИЕ (ПОЛЬЗОВАТЕЛИ, ГРУППЫ, ЛОГИ)
+    // ===============================================
+    socket.on('get_logs', async ({ page = 1, search = '', user }) => {
+        if (!user || !['admin', 'director'].includes(user.role)) return;
+        const limit = 50;
+        const skip = (page - 1) * limit;
+        let query = {};
+        if (search) {
+            const regex = new RegExp(search, 'i');
+            query = { $or: [{ username: regex }, { action: regex }, { details: regex }] };
+        }
+        try {
+            const logs = await Log.find(query).sort({ timestamp: -1 }).skip(skip).limit(limit);
+            const total = await Log.countDocuments(query);
+            socket.emit('logs_data', { logs, total });
+        } catch (e) { console.error(e); }
+    });
+
+    socket.on('get_users_list', async ({ user }) => {
+        if (!user || user.role !== 'admin') return;
+        const users = await User.find({}, '-password'); 
+        socket.emit('users_list_update', users);
+    });
+
+    socket.on('admin_create_user', async ({ newUserData, user }) => {
+        if (!user || user.role !== 'admin') return;
+        try {
+            const exists = await User.findOne({ username: newUserData.username });
+            if (exists) { socket.emit('operation_error', 'Логин уже занят'); return; }
+            const userToCreate = new User(newUserData);
+            await userToCreate.save();
+            socket.emit('user_saved');
+        } catch (e) { socket.emit('operation_error', 'Ошибка: ' + e.message); }
+    });
+
+    socket.on('admin_edit_user', async ({ userData, user }) => {
+        if (!user || user.role !== 'admin') return;
+        try {
+            const updateFields = { ...userData };
+            if (!updateFields.password) delete updateFields.password;
+            await User.findByIdAndUpdate(userData._id, updateFields);
+            socket.emit('user_saved');
+        } catch (e) { socket.emit('operation_error', 'Ошибка сохранения'); }
+    });
+
+    socket.on('admin_delete_user', async ({ targetUserId, user }) => {
+        if (!user || user.role !== 'admin') return;
+        try {
+            await User.findByIdAndDelete(targetUserId);
+            const list = await User.find({}, '-password');
+            socket.emit('users_list_update', list);
+        } catch (e) { socket.emit('operation_error', 'Ошибка удаления'); }
+    });
+
+    socket.on('create_group', async ({ name, user }) => {
+        if (!user || !canEditGroups(user.role)) return;
+        try {
+            const count = await WorkGroup.countDocuments();
+            const newGroup = new WorkGroup({ id: genId(), name, order: count + 1 });
+            await newGroup.save();
+            await broadcastGroups();
+        } catch (e) { console.error(e); }
+    });
+
+    socket.on('delete_group', async ({ groupId, user }) => {
+        if (!user || !canEditGroups(user.role)) return;
+        try {
+            await WorkGroup.findOneAndDelete({ id: groupId });
+            await broadcastGroups();
+        } catch (e) { console.error(e); }
+    });
+
+    socket.on('move_group', async ({ groupId, direction, user }) => {
+        if (!user || !canEditGroups(user.role)) return;
+        try {
+            let groups = await WorkGroup.find().sort({ order: 1 });
+            const index = groups.findIndex(g => g.id === groupId);
+            if (index === -1) return;
+            if (direction === 'up' && index > 0) {
+                const tempOrder = groups[index].order;
+                groups[index].order = groups[index - 1].order;
+                groups[index - 1].order = tempOrder;
+                await groups[index].save(); await groups[index - 1].save();
+            } else if (direction === 'down' && index < groups.length - 1) {
+                const tempOrder = groups[index].order;
+                groups[index].order = groups[index + 1].order;
+                groups[index + 1].order = tempOrder;
+                await groups[index].save(); await groups[index + 1].save();
+            }
+            await broadcastGroups();
+        } catch (e) { console.error(e); }
     });
 };
