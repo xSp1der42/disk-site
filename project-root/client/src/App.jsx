@@ -57,26 +57,14 @@ function App() {
   const navigate = useNavigate();
 
   const sysActions = useMemo(() => ({
-      alert: (title, message, onConfirm) => {
-          setModalConfig({ type: 'alert', title, message, onConfirm: onConfirm || (() => {}) });
-      },
-      confirm: (title, message, onConfirm) => {
-          setModalConfig({ type: 'confirm', title, message, onConfirm });
-      },
-      prompt: (title, message, onConfirm, placeholder) => {
-          setModalConfig({ type: 'prompt', title, message, onConfirm, placeholder });
-      }
+      alert: (title, message, onConfirm) => setModalConfig({ type: 'alert', title, message, onConfirm: onConfirm || (() => {}) }),
+      confirm: (title, message, onConfirm) => setModalConfig({ type: 'confirm', title, message, onConfirm }),
+      prompt: (title, message, onConfirm, placeholder) => setModalConfig({ type: 'prompt', title, message, onConfirm, placeholder })
   }), []);
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user');
-    if (savedUser) {
-        try {
-            setUser(JSON.parse(savedUser));
-        } catch (e) {
-            localStorage.removeItem('user');
-        }
-    }
+    if (savedUser) { try { setUser(JSON.parse(savedUser)); } catch (e) {} }
   }, []);
 
   useEffect(() => {
@@ -84,13 +72,10 @@ function App() {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  const toggleTheme = () => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light');
-  };
+  const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
 
   useEffect(() => {
     socket.on('init_data', (data) => {
-      // Сортировка: Object -> Contract -> Floor -> Room
       const sorted = data.map(b => ({
           ...b,
           contracts: (b.contracts || []).sort((a,b) => (a.order||0) - (b.order||0)).map(c => ({
@@ -103,7 +88,6 @@ function App() {
       }));
       setBuildings(sorted);
       
-      // Обновление состояния открытой модалки
       if (selectedRoom) {
         const b = sorted.find(x => x.id === selectedRoom.buildingId);
         const c = b?.contracts.find(x => x.id === selectedRoom.contractId);
@@ -114,56 +98,32 @@ function App() {
     });
 
     socket.on('init_groups', (data) => setGroups(data));
-
     socket.on('login_success', (userData) => {
-        setUser(userData);
-        localStorage.setItem('user', JSON.stringify(userData));
-        setLoginInput({ username: '', password: '' });
+        setUser(userData); localStorage.setItem('user', JSON.stringify(userData));
         navigate('/dashboard');
-        if (userData.role === 'admin') {
-            socket.emit('get_users_list', { user: userData });
-        }
+        if (userData.role === 'admin') socket.emit('get_users_list', { user: userData });
     });
-
     socket.on('login_error', (msg) => sysActions.alert("Ошибка входа", msg));
-    socket.on('user_saved', () => { sysActions.alert("Успешно", "Данные сотрудника успешно сохранены!"); socket.emit('get_users_list', { user }); });
     socket.on('users_list_update', (list) => setAllUsers(list));
     socket.on('operation_error', (msg) => sysActions.alert("Ошибка", msg));
 
     return () => {
-      socket.off('init_data');
-      socket.off('init_groups');
-      socket.off('login_success');
-      socket.off('login_error');
-      socket.off('user_saved');
-      socket.off('users_list_update');
-      socket.off('operation_error');
+      socket.off('init_data'); socket.off('init_groups');
+      socket.off('login_success'); socket.off('login_error');
+      socket.off('users_list_update'); socket.off('operation_error');
     };
   }, [selectedRoom, user, sysActions, navigate]);
 
-  const handleLogin = (e) => {
-      e.preventDefault();
-      socket.emit('login', loginInput);
-  };
-
-  const logout = () => {
-      localStorage.removeItem('user');
-      setUser(null);
-      navigate('/login');
-  };
-
-  const emitAction = (event, payload) => {
-      socket.emit(event, { ...payload, user });
-  };
+  const handleLogin = (e) => { e.preventDefault(); socket.emit('login', loginInput); };
+  const logout = () => { localStorage.removeItem('user'); setUser(null); navigate('/login'); };
+  const emitAction = (event, payload) => socket.emit(event, { ...payload, user });
 
   const actions = {
       createBuilding: (name) => emitAction('create_building', { name }),
       addContract: (buildingId, name) => emitAction('add_contract', { buildingId, name }),
       addFloor: (buildingId, contractId, name) => emitAction('add_floor', { buildingId, contractId, name }),
       addRoom: (buildingId, contractId, floorId, name) => emitAction('add_room', { buildingId, contractId, floorId, name }),
-      
       addTask: (params) => emitAction('add_task', params),
-      editTask: (params) => emitAction('edit_task', params),
       
       deleteItem: (type, ids) => {
             emitAction('delete_item', { type, ids });
@@ -171,9 +131,10 @@ function App() {
             if (type === 'contract') navigate(`/dashboard/${ids.buildingId}`);
       },
       renameItem: (type, ids, newName) => emitAction('rename_item', { type, ids, newName }),
-      reorderItem: (type, ids, sourceIndex, destinationIndex) => {
-          emitAction('reorder_item', { type, ids, sourceIndex, destinationIndex });
-      },
+      reorderItem: (type, ids, sourceIndex, destinationIndex) => emitAction('reorder_item', { type, ids, sourceIndex, destinationIndex }),
+      
+      // ВОЗВРАЩЕННЫЙ ACTION
+      copyItem: (type, ids) => emitAction('copy_item', { type, ids }),
       
       createGroup: (name) => emitAction('create_group', { name }),
       deleteGroup: (groupId) => emitAction('delete_group', { groupId }),
@@ -187,45 +148,19 @@ function App() {
             sysActions.alert("Нет прав", "Только ПТО или Админ может принимать ИД!"); return;
         }
         emitAction('toggle_task_status', { buildingId, contractId, floorId, roomId, taskId, field, value: !value });
-      },
-      updateTaskDates: (buildingId, contractId, floorId, roomId, taskId, dates) => {
-          emitAction('update_task_dates', { buildingId, contractId, floorId, roomId, taskId, dates });
-      },
-      addTaskComment: (buildingId, contractId, floorId, roomId, taskId, text) => {
-          emitAction('add_task_comment', { buildingId, contractId, floorId, roomId, taskId, text });
       }
   };
 
   return (
       <>
           <Routes>
-              <Route path="/login" element={
-                  !user ? <LoginScreen handleLogin={handleLogin} loginInput={loginInput} setLoginInput={setLoginInput} /> : <Navigate to="/dashboard" />
-              } />
+              <Route path="/login" element={ !user ? <LoginScreen handleLogin={handleLogin} loginInput={loginInput} setLoginInput={setLoginInput} /> : <Navigate to="/dashboard" /> } />
               
-              <Route element={
-                <ProtectedLayout 
-                    user={user} 
-                    buildings={buildings} 
-                    logout={logout} 
-                    theme={theme} 
-                    toggleTheme={toggleTheme}
-                    selectedRoom={selectedRoom}
-                    setSelectedRoom={setSelectedRoom}
-                    actions={actions}
-                    groups={groups}
-                    sysActions={sysActions}
-                />
-              }>
+              <Route element={ <ProtectedLayout user={user} buildings={buildings} logout={logout} theme={theme} toggleTheme={toggleTheme} selectedRoom={selectedRoom} setSelectedRoom={setSelectedRoom} actions={actions} groups={groups} sysActions={sysActions} /> }>
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
                   <Route path="/dashboard" element={<DashboardIndex buildings={buildings} user={user} actions={actions} sysActions={sysActions} />} />
-                  
-                  {/* УРОВЕНЬ 1: Выбор Договора в Объекте */}
                   <Route path="/dashboard/:id" element={<BuildingPage buildings={buildings} user={user} actions={actions} sysActions={sysActions} />} />
-                  
-                  {/* УРОВЕНЬ 2: Работа с Этажами Договора */}
                   <Route path="/dashboard/:id/contract/:contractId" element={<ContractPage buildings={buildings} user={user} actions={actions} setSelectedRoom={setSelectedRoom} sysActions={sysActions} />} />
-                  
                   <Route path="/analytics" element={['admin', 'director'].includes(user?.role) ? <AnalyticsPage buildings={buildings} user={user} /> : <Navigate to="/dashboard"/>} />
                   <Route path="/groups" element={user?.role === 'admin' ? <GroupsPage user={user} groups={groups} actions={actions} buildings={buildings} setSelectedRoom={setSelectedRoom} sysActions={sysActions} /> : <Navigate to="/dashboard"/>} />
                   <Route path="/users" element={user?.role === 'admin' ? <UsersPage user={user} allUsers={allUsers} setAllUsers={setAllUsers} refreshUsers={() => socket.emit('get_users_list', { user })} sysActions={sysActions} /> : <Navigate to="/dashboard"/>} />
