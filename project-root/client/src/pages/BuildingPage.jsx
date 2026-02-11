@@ -1,58 +1,52 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Building2, FileText, ArrowLeft, PlusCircle, Pencil, Trash2, GripVertical, Move, ChevronDown, ChevronRight } from 'lucide-react';
+import { Building2, ArrowLeft, PlusCircle, Pencil, Trash2, FileText, ChevronUp, ChevronDown } from 'lucide-react';
 
-const BuildingPage = ({ buildings, user, actions, setSelectedRoom, sysActions }) => {
+const BuildingPage = ({ buildings, user, actions, sysActions }) => {
     const { id } = useParams();
     const navigate = useNavigate();
     const building = buildings.find(b => b.id === id);
     const hasEditRights = ['admin', 'architect'].includes(user.role);
-    
-    // UI State
-    const [isReorderingMode, setIsReorderingMode] = useState(false);
-    const [expandedContracts, setExpandedContracts] = useState({});
+    const [q, setQ] = useState('');
 
     if (!building) return <div className="content-area">Объект не найден</div>;
 
-    const toggleContract = (cId) => {
-        setExpandedContracts(prev => ({ ...prev, [cId]: !prev[cId] }));
-    };
-
-    // --- Actions ---
     const handleAddContract = () => {
         sysActions.prompt("Новый договор", "Название (например: Отделочные работы):", (name) => {
             actions.addContract(building.id, name);
         });
     };
 
-    const handleAddFloor = (contractId) => {
-        sysActions.prompt("Новый этаж", "Название этажа:", (name) => {
-            actions.addFloor(building.id, contractId, name);
+    const handleDelete = (cId) => {
+        sysActions.confirm("Удаление", "Удалить договор и все данные внутри?", () => {
+            actions.deleteItem('contract', { buildingId: building.id, contractId: cId });
         });
     };
 
-    const handleAddRoom = (contractId, floorId) => {
-        sysActions.prompt("Новое помещение", "Название/Номер:", (name) => {
-            actions.addRoom(building.id, contractId, floorId, name);
-        });
-    };
-
-    const handleDelete = (type, ids) => {
-        sysActions.confirm("Удаление", "Вы уверены? Это действие необратимо.", () => actions.deleteItem(type, ids));
-    };
-    
-    const handleRename = (type, ids, oldName) => {
+    const handleRename = (cId, oldName) => {
         sysActions.prompt("Переименование", "Новое название:", (n) => {
-            if(n!==oldName) actions.renameItem(type, ids, n);
+            if(n!==oldName) actions.renameItem('contract', {buildingId: building.id, contractId: cId}, n);
         }, oldName);
     };
 
-    const getRoomStatusColor = (room) => {
-        if (!room.tasks || room.tasks.length === 0) return 'var(--bg-body)';
-        const allDone = room.tasks.every(t => t.work_done && t.doc_done);
-        if (allDone) return 'var(--status-green-bg)';
-        const anyProgress = room.tasks.some(t => t.work_done || t.doc_done);
-        return anyProgress ? 'var(--status-orange-bg)' : 'var(--status-red-bg)';
+    const contracts = building.contracts || [];
+    const filtered = contracts.filter(c => c.name.toLowerCase().includes(q.toLowerCase()));
+
+    // Подсчет статистики для карточки договора
+    const getStats = (contract) => {
+        let total = 0, work = 0, doc = 0;
+        (contract.floors || []).forEach(f => {
+            (f.rooms || []).forEach(r => {
+                (r.tasks || []).forEach(t => {
+                    total++;
+                    if(t.work_done) work++;
+                    if(t.doc_done) doc++;
+                });
+            });
+        });
+        const wp = total ? Math.round((work/total)*100) : 0;
+        const dp = total ? Math.round((doc/total)*100) : 0;
+        return { total, wp, dp };
     };
 
     return (
@@ -66,98 +60,77 @@ const BuildingPage = ({ buildings, user, actions, setSelectedRoom, sysActions })
                     </div>
                 </div>
                 <div className="control-actions">
-                    <button className="action-btn secondary" onClick={() => navigate('/dashboard')}><ArrowLeft size={16}/> Назад</button>
+                    <div style={{display:'flex', alignItems:'center', background:'var(--bg-body)', padding:'6px 12px', borderRadius:8, marginRight: 10}}>
+                        <FileText size={16} color="var(--text-muted)"/>
+                        <input className="sm-input" style={{border:'none', background:'transparent', width:150}} placeholder="Найти договор..." value={q} onChange={e=>setQ(e.target.value)}/>
+                    </div>
+
+                    <button className="action-btn secondary" onClick={() => navigate('/dashboard')}>
+                        <ArrowLeft size={16}/> Назад
+                    </button>
+                    
                     {hasEditRights && (
-                        <>
-                            <button className={`action-btn ${isReorderingMode?'primary':'secondary'}`} onClick={() => setIsReorderingMode(!isReorderingMode)}>
-                                <Move size={16}/> {isReorderingMode ? 'Готово' : 'Порядок'}
-                            </button>
-                            <button className="action-btn primary" onClick={handleAddContract}>
-                                <PlusCircle size={16}/> Договор
-                            </button>
-                        </>
+                        <button className="action-btn primary" onClick={handleAddContract}>
+                            <PlusCircle size={16}/> Договор
+                        </button>
                     )}
                 </div>
             </div>
 
             <div className="content-area">
-                {(!building.contracts || building.contracts.length === 0) && (
-                    <div style={{textAlign:'center', padding:40, color:'var(--text-muted)'}}>
-                        Нет договоров. Создайте первый договор для добавления этажей.
-                    </div>
-                )}
-
-                <div className="floors-list">
-                    {building.contracts?.map((contract) => (
-                        <div key={contract.id} style={{marginBottom: 20, background:'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border-color)', overflow:'hidden'}}>
-                            {/* Заголовок Договора */}
-                            <div 
-                                style={{
-                                    padding: '16px 24px', background: 'var(--bg-hover)', 
-                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer'
-                                }}
-                                onClick={() => toggleContract(contract.id)}
-                            >
-                                <div style={{display:'flex', alignItems:'center', gap: 12, fontWeight: 700, fontSize:'1.05rem'}}>
-                                    {expandedContracts[contract.id] ? <ChevronDown size={20}/> : <ChevronRight size={20}/>}
-                                    <FileText size={20} color="var(--accent-secondary)"/>
-                                    {contract.name}
+                <div className="dashboard-grid">
+                    {filtered.map((c, idx) => {
+                        const stats = getStats(c);
+                        return (
+                            <div key={c.id} className="project-card" onClick={() => navigate(`/dashboard/${building.id}/contract/${c.id}`)}>
+                                <div className="card-top">
+                                    <div style={{background: 'var(--bg-active)', padding: 12, borderRadius: 12}}>
+                                        <FileText size={32} color="var(--accent-secondary)"/>
+                                    </div>
+                                    {hasEditRights && (
+                                        <div style={{display:'flex', gap:'5px'}} onClick={e => e.stopPropagation()}>
+                                            <div className="move-btn-group">
+                                                <button className="move-btn" disabled={idx===0} onClick={() => actions.reorderItem('contract', {buildingId: building.id}, idx, idx-1)}>
+                                                    <ChevronUp size={16}/>
+                                                </button>
+                                                <button className="move-btn" disabled={idx===filtered.length-1} onClick={() => actions.reorderItem('contract', {buildingId: building.id}, idx, idx+1)}>
+                                                    <ChevronDown size={16}/>
+                                                </button>
+                                            </div>
+                                            <button className="icon-btn-edit" onClick={() => handleRename(c.id, c.name)}>
+                                                <Pencil size={16}/>
+                                            </button>
+                                            <button className="icon-btn-danger" onClick={() => handleDelete(c.id)}>
+                                                <Trash2 size={16}/>
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                                 
-                                {hasEditRights && (
-                                    <div style={{display:'flex', gap: 8}} onClick={e => e.stopPropagation()}>
-                                        <button className="icon-btn-edit" onClick={() => handleRename('contract', {buildingId:building.id, contractId:contract.id}, contract.name)}><Pencil size={16}/></button>
-                                        <button className="icon-btn-danger" onClick={() => handleDelete('contract', {buildingId:building.id, contractId:contract.id})}><Trash2 size={16}/></button>
-                                        {!isReorderingMode && (
-                                            <button className="action-btn primary" style={{padding:'6px 12px', fontSize:'0.8rem'}} onClick={() => handleAddFloor(contract.id)}>+ Этаж</button>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
+                                <h3>{c.name}</h3>
 
-                            {/* Список Этажей */}
-                            {expandedContracts[contract.id] && (
-                                <div style={{padding: 20, background: 'var(--bg-body)'}}>
-                                    {contract.floors.length === 0 && <div style={{color:'var(--text-muted)', fontSize:'0.9rem', fontStyle:'italic'}}>Нет этажей</div>}
-                                    
-                                    {contract.floors.map((floor) => (
-                                        <div key={floor.id} style={{marginBottom: 16, background: 'var(--bg-card)', borderRadius: 8, border: '1px solid var(--border-color)'}}>
-                                            <div style={{padding: '10px 16px', borderBottom: '1px solid var(--border-color)', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                                                <span style={{fontWeight: 600, display:'flex', alignItems:'center', gap: 8}}>
-                                                    {isReorderingMode && <GripVertical size={16} style={{cursor:'grab', color:'var(--text-muted)'}}/>}
-                                                    {floor.name}
-                                                </span>
-                                                {hasEditRights && !isReorderingMode && (
-                                                    <div style={{display:'flex', gap:6}}>
-                                                        <button className="text-btn" style={{fontSize:'0.8rem'}} onClick={() => handleAddRoom(contract.id, floor.id)}>+ Помещение</button>
-                                                        <button className="icon-btn-edit" onClick={()=>handleRename('floor', {buildingId:building.id, contractId:contract.id, floorId:floor.id}, floor.name)}><Pencil size={14}/></button>
-                                                        <button className="icon-btn-danger" onClick={()=>handleDelete('floor', {buildingId:building.id, contractId:contract.id, floorId:floor.id})}><Trash2 size={14}/></button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                            
-                                            <div className="rooms-grid" style={{padding: 12}}>
-                                                {floor.rooms.map((room) => (
-                                                    <div 
-                                                        key={room.id} 
-                                                        className="room-item" 
-                                                        style={{background: getRoomStatusColor(room), borderColor: isReorderingMode ? 'transparent' : 'var(--border-color)'}}
-                                                        onClick={() => !isReorderingMode && setSelectedRoom({ buildingId: building.id, contractId: contract.id, floorId: floor.id, room })}
-                                                    >
-                                                        <div className="room-name">{room.name}</div>
-                                                        <div className="room-stats" style={{fontSize:'0.7rem'}}>
-                                                            Позиций: {room.tasks.length}
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                                {floor.rooms.length === 0 && <div style={{width:'100%', fontSize:'0.8rem', color:'var(--text-muted)', padding:4}}>Пусто</div>}
-                                            </div>
-                                        </div>
-                                    ))}
+                                <div style={{marginBottom: 16}}>
+                                    <div style={{display:'flex', justifyContent:'space-between', fontSize:'0.75rem', marginBottom: 4, fontWeight:600, color:'var(--text-muted)'}}>
+                                        <span>СМР</span>
+                                        <span>{stats.wp}%</span>
+                                    </div>
+                                    <div style={{width:'100%', background:'var(--border-color)', height: 6, borderRadius: 3, overflow:'hidden', marginBottom: 8}}>
+                                        <div style={{width: `${stats.wp}%`, background:'#10b981', height:'100%'}}></div>
+                                    </div>
                                 </div>
-                            )}
+                                
+                                <div className="card-meta">
+                                    <span>Этажей: {c.floors?.length || 0}</span>
+                                    <span className="arrow">→</span>
+                                </div>
+                            </div>
+                        );
+                    })}
+                    {filtered.length === 0 && (
+                        <div style={{padding:40, textAlign:'center', color:'var(--text-muted)', gridColumn: '1 / -1'}}>
+                            Нет договоров. Добавьте первый договор.
                         </div>
-                    ))}
+                    )}
                 </div>
             </div>
         </>

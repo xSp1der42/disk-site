@@ -11,7 +11,8 @@ import RoomModal from './components/RoomModal';
 
 // Страницы
 import DashboardIndex from './pages/DashboardIndex';
-import BuildingPage from './pages/BuildingPage';
+import BuildingPage from './pages/BuildingPage'; // Список договоров
+import ContractPage from './pages/ContractPage'; // Список этажей (бывшая BuildingPage)
 import GroupsPage from './pages/GroupsPage';
 import UsersPage from './pages/UsersPage';
 import LogsPage from './pages/LogsPage';
@@ -167,6 +168,7 @@ function App() {
       deleteItem: (type, ids) => {
             emitAction('delete_item', { type, ids });
             if (type === 'building') navigate('/dashboard');
+            if (type === 'contract') navigate(`/dashboard/${ids.buildingId}`);
       },
       renameItem: (type, ids, newName) => emitAction('rename_item', { type, ids, newName }),
       reorderItem: (type, ids, sourceIndex, destinationIndex) => {
@@ -217,7 +219,13 @@ function App() {
               }>
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
                   <Route path="/dashboard" element={<DashboardIndex buildings={buildings} user={user} actions={actions} sysActions={sysActions} />} />
-                  <Route path="/dashboard/:id" element={<BuildingPage buildings={buildings} user={user} actions={actions} setSelectedRoom={setSelectedRoom} sysActions={sysActions} />} />
+                  
+                  {/* УРОВЕНЬ 1: Выбор Договора в Объекте */}
+                  <Route path="/dashboard/:id" element={<BuildingPage buildings={buildings} user={user} actions={actions} sysActions={sysActions} />} />
+                  
+                  {/* УРОВЕНЬ 2: Работа с Этажами Договора */}
+                  <Route path="/dashboard/:id/contract/:contractId" element={<ContractPage buildings={buildings} user={user} actions={actions} setSelectedRoom={setSelectedRoom} sysActions={sysActions} />} />
+                  
                   <Route path="/analytics" element={['admin', 'director'].includes(user?.role) ? <AnalyticsPage buildings={buildings} user={user} /> : <Navigate to="/dashboard"/>} />
                   <Route path="/groups" element={user?.role === 'admin' ? <GroupsPage user={user} groups={groups} actions={actions} buildings={buildings} setSelectedRoom={setSelectedRoom} sysActions={sysActions} /> : <Navigate to="/dashboard"/>} />
                   <Route path="/users" element={user?.role === 'admin' ? <UsersPage user={user} allUsers={allUsers} setAllUsers={setAllUsers} refreshUsers={() => socket.emit('get_users_list', { user })} sysActions={sysActions} /> : <Navigate to="/dashboard"/>} />
