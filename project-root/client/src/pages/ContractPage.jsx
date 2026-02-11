@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FileText, Filter, ArrowLeft, PlusCircle, Pencil, Trash2, PieChart, Copy, GripVertical, Move, X } from 'lucide-react';
+import { FileText, ArrowLeft, PlusCircle, Pencil, Trash2, PieChart, Copy, GripVertical, Move } from 'lucide-react';
 import { getRoomStatus } from '../utils/helpers';
 
-const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysActions }) => {
+const ContractPage = ({ buildings, user, actions, setSelectedRoom, sysActions }) => {
     const { buildingId, contractId } = useParams();
     const navigate = useNavigate();
     
@@ -11,29 +11,24 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysAc
     const contract = building?.contracts.find(c => c.id === contractId);
     const hasEditRights = ['admin', 'architect'].includes(user.role);
 
-    // DnD & Filter State
+    // DnD State
     const [isReorderingMode, setIsReorderingMode] = useState(false);
     const [draggedItem, setDraggedItem] = useState(null); 
-    const [filterGroupId, setFilterGroupId] = useState('');
 
-    // Статистика по Договору
     const stats = useMemo(() => {
         if (!contract) return null;
         let total = 0, work = 0, doc = 0, vol = 0;
         contract.floors.forEach(f => f.rooms.forEach(r => r.tasks.forEach(t => {
-            if (t.type === 'smr') { 
-                total++;
-                if(t.work_done) work++;
-                if(t.doc_done) doc++;
-                vol += (t.volume || 0);
-            }
+            total++;
+            if(t.work_done) work++;
+            if(t.doc_done) doc++;
+            vol += (t.volume || 0);
         })));
         return { total, work, doc, vol };
     }, [contract]);
 
     if (!contract) return <div className="content-area">Договор не найден</div>;
 
-    // --- Actions ---
     const handleAddFloor = () => {
         sysActions.prompt("Новый этаж", "Название (например: 2 Этаж):", (name) => {
             actions.addFloor(building.id, contract.id, name);
@@ -108,16 +103,7 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysAc
                 </div>
                 
                 <div className="control-actions">
-                     <div className="filter-dropdown-container">
-                        <Filter size={16} style={{marginRight: 8, color: 'var(--text-muted)'}} />
-                        <select className="filter-select" value={filterGroupId} onChange={e => setFilterGroupId(e.target.value)}>
-                            <option value="">Все работы</option>
-                            {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                            <option value="uncategorized">Без группы</option>
-                        </select>
-                        {filterGroupId && <button className="icon-btn-danger" onClick={() => setFilterGroupId('')}><X size={14}/></button>}
-                    </div>
-
+                    {/* Фильтр убран отсюда */}
                     <button className="action-btn secondary" onClick={() => navigate(`/dashboard/${building.id}`)}>
                         <ArrowLeft size={16} /> Назад
                     </button>
@@ -182,46 +168,31 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysAc
                                 )}
                             </div>
                             <div className="rooms-grid">
-                                {floor.rooms.map((room, roomIndex) => {
-                                    const statusClass = getRoomStatus(room, filterGroupId);
-                                    let isHighlighted = false;
-                                    if (filterGroupId) isHighlighted = room.tasks.some(t => (t.groupId || 'uncategorized') === filterGroupId);
-
-                                    return (
-                                        <div 
-                                            key={room.id} 
-                                            className={`room-item ${statusClass} ${isHighlighted ? 'filtered-highlight' : ''}`}
-                                            onClick={() => setSelectedRoom({ buildingId: building.id, contractId: contract.id, floorId: floor.id, room })}
-                                            draggable={isReorderingMode}
-                                            onDragStart={(e) => onDragStart(e, 'room', room, roomIndex, floor.id)}
-                                            onDragEnd={onDragEnd}
-                                            onDragOver={(e) => { if(isReorderingMode) e.preventDefault(); }}
-                                            onDrop={(e) => onDrop(e, 'room', roomIndex, floor.id)}
-                                            style={{cursor: isReorderingMode ? 'grab' : 'pointer'}}
-                                        >
-                                            {hasEditRights && !isReorderingMode && (
-                                                <div style={{position:'absolute', top:4, right:4, opacity:0.6}} onClick={(e) => handleCopyRoom(floor.id, room.id, e)}><Copy size={14}/></div>
-                                            )}
-                                            <div className="room-name">{room.name}</div>
-                                            <div className="room-stats">
-                                                {/* ВОТ ЗДЕСЬ ВОЗВРАЩЕН СТАРЫЙ ФОРМАТ ОТОБРАЖЕНИЯ */}
-                                                {(() => {
-                                                    const tasks = room.tasks.filter(t => t.type === 'smr');
-                                                    const filtered = filterGroupId 
-                                                        ? tasks.filter(t => (t.groupId || 'uncategorized') === filterGroupId) 
-                                                        : tasks;
-                                                    const done = filtered.filter(t => t.work_done && t.doc_done).length;
-                                                    
-                                                    // Если фильтр включен или работ > 0, показываем дробь
-                                                    if (filtered.length > 0) {
-                                                        return `${done}/${filtered.length}`;
-                                                    }
-                                                    return 'Нет работ';
-                                                })()}
-                                            </div>
+                                {floor.rooms.map((room, roomIndex) => (
+                                    <div 
+                                        key={room.id} 
+                                        className={`room-item ${getRoomStatus(room)}`}
+                                        onClick={() => setSelectedRoom({ buildingId: building.id, contractId: contract.id, floorId: floor.id, room })}
+                                        draggable={isReorderingMode}
+                                        onDragStart={(e) => onDragStart(e, 'room', room, roomIndex, floor.id)}
+                                        onDragEnd={onDragEnd}
+                                        onDragOver={(e) => { if(isReorderingMode) e.preventDefault(); }}
+                                        onDrop={(e) => onDrop(e, 'room', roomIndex, floor.id)}
+                                        style={{cursor: isReorderingMode ? 'grab' : 'pointer'}}
+                                    >
+                                        {hasEditRights && !isReorderingMode && (
+                                            <div style={{position:'absolute', top:4, right:4, opacity:0.6}} onClick={(e) => handleCopyRoom(floor.id, room.id, e)}><Copy size={14}/></div>
+                                        )}
+                                        <div className="room-name">{room.name}</div>
+                                        <div className="room-stats">
+                                            {(() => {
+                                                const tasks = room.tasks || [];
+                                                const done = tasks.filter(t => t.work_done && t.doc_done).length;
+                                                return tasks.length > 0 ? `${done}/${tasks.length}` : 'Нет работ';
+                                            })()}
                                         </div>
-                                    );
-                                })}
+                                    </div>
+                                ))}
                                 {floor.rooms.length === 0 && <div style={{width:'100%', textAlign:'center', padding:10, color:'var(--text-muted)'}}>Пусто</div>}
                             </div>
                         </div>

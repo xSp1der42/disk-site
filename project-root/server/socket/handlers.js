@@ -6,9 +6,6 @@ const { genId, canEditStructure, canEditGroups, createLog } = require('../utils'
 
 module.exports = function(io, socket) {
     
-    // Оптимизация: используем lean() где возможно для чтения, 
-    // но для broadcastBuildings нам нужны полные данные.
-    // Если БД большая, это все равно будет узким местом.
     const broadcastGroups = async () => {
         const groups = await WorkGroup.find().sort({ order: 1 });
         io.emit('init_groups', groups);
@@ -40,10 +37,9 @@ module.exports = function(io, socket) {
         }
     });
 
-    // ===============================================
-    // СТРУКТУРА: ОБЪЕКТЫ (Buildings)
-    // ===============================================
-    socket.on('create_building', async ({ name, user }) => {
+    // --- Структура ---
+
+    socket.on('create_building', async ({ name, user }) => { // "Добавить объект"
         if (!user || !canEditStructure(user.role)) return;
         try {
             const count = await Building.countDocuments();
@@ -54,9 +50,6 @@ module.exports = function(io, socket) {
         } catch(e) { console.error(e); }
     });
 
-    // ===============================================
-    // СТРУКТУРА: ДОГОВОРЫ (Contracts)
-    // ===============================================
     socket.on('create_contract', async ({ buildingId, name, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
@@ -71,9 +64,6 @@ module.exports = function(io, socket) {
         } catch(e) { console.error(e); }
     });
 
-    // ===============================================
-    // СТРУКТУРА: ЭТАЖИ (Floors)
-    // ===============================================
     socket.on('add_floor', async ({ buildingId, contractId, name, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
@@ -89,10 +79,7 @@ module.exports = function(io, socket) {
         } catch(e) { console.error(e); }
     });
 
-    // ===============================================
-    // СТРУКТУРА: ПОМЕЩЕНИЯ (Rooms)
-    // ===============================================
-    socket.on('add_room', async ({ buildingId, contractId, floorId, name, user }) => {
+    socket.on('add_room', async ({ buildingId, contractId, floorId, name, user }) => { // "Добавить помещение"
         if (!user || !canEditStructure(user.role)) return;
         try {
             const b = await Building.findOne({ id: buildingId });
@@ -108,10 +95,8 @@ module.exports = function(io, socket) {
         } catch(e) { console.error(e); }
     });
 
-    // ===============================================
-    // СТРУКТУРА: ЗАДАЧИ (Tasks - SMR/MTR)
-    // ===============================================
-    socket.on('add_task', async ({ buildingId, contractId, floorId, roomId, taskName, groupId, volume, unit, unit_power, type, user }) => {
+    // --- СМР (Работы) ---
+    socket.on('add_task', async ({ buildingId, contractId, floorId, roomId, taskName, groupId, volume, unit, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
             const b = await Building.findOne({ id: buildingId });
@@ -125,17 +110,16 @@ module.exports = function(io, socket) {
                     groupId: groupId || null,
                     volume: parseFloat(volume) || 0,
                     unit: unit || 'шт',
-                    unit_power: unit_power || '',
-                    type: type || 'smr', // 'smr' | 'mtr'
                     work_done: false, 
                     doc_done: false,
                     start_date: null,
                     end_date: null,
-                    comments: []
+                    comments: [],
+                    materials: [] // Инициализируем массив материалов
                 });
                 await b.save();
                 await broadcastBuildings();
-                createLog(io, user.username, user.role, 'Работы', `Пом: ${r.name}, Добавлено (${type}): ${taskName}`);
+                createLog(io, user.username, user.role, 'СМР', `Пом: ${r.name}, Добавлена работа: ${taskName}`);
             }
         } catch(e) { console.error(e); }
     });
@@ -154,7 +138,6 @@ module.exports = function(io, socket) {
                 if (data.groupId !== undefined) t.groupId = data.groupId;
                 if (data.volume !== undefined) t.volume = parseFloat(data.volume);
                 if (data.unit !== undefined) t.unit = data.unit;
-                if (data.unit_power !== undefined) t.unit_power = data.unit_power;
                 
                 await b.save();
                 await broadcastBuildings();
@@ -163,9 +146,50 @@ module.exports = function(io, socket) {
         } catch (e) { console.error(e); }
     });
 
-    // ===============================================
-    // ОПЕРАЦИИ: УДАЛЕНИЕ, ПЕРЕИМЕНОВАНИЕ, КОПИРОВАНИЕ
-    // ===============================================
+    // --- МТР (Материалы) ---
+    socket.on('add_material', async ({ buildingId, contractId, floorId, roomId, taskId, matName, coefficient, unit, user }) => {
+        if (!user || !canEditStructure(user.role)) return;
+        try {
+            const b = await Building.findOne({ id: buildingId });
+            const c = b?.contracts.find(x => x.id === contractId);
+            const f = c?.floors.find(x => x.id === floorId);
+            const r = f?.rooms.find(x => x.id === roomId);
+            const t = r?.tasks.find(x => x.id === taskId);
+            
+            if (t) {
+                t.materials.push({
+                    id: genId(),
+                    name: matName,
+                    coefficient: parseFloat(coefficient) || 1,
+                    unit: unit || 'шт'
+                });
+                await b.save();
+                await broadcastBuildings();
+                createLog(io, user.username, user.role, 'МТР', `Работа: ${t.name}, Добавлен материал: ${matName}`);
+            }
+        } catch(e) { console.error(e); }
+    });
+
+    socket.on('delete_material', async ({ buildingId, contractId, floorId, roomId, taskId, matId, user }) => {
+        if (!user || !canEditStructure(user.role)) return;
+        try {
+            const b = await Building.findOne({ id: buildingId });
+            const c = b?.contracts.find(x => x.id === contractId);
+            const f = c?.floors.find(x => x.id === floorId);
+            const r = f?.rooms.find(x => x.id === roomId);
+            const t = r?.tasks.find(x => x.id === taskId);
+            
+            if (t) {
+                t.materials = t.materials.filter(m => m.id !== matId);
+                await b.save();
+                await broadcastBuildings();
+                createLog(io, user.username, user.role, 'МТР', `Удален материал из работы: ${t.name}`);
+            }
+        } catch(e) { console.error(e); }
+    });
+
+    // --- Общие операции ---
+
     socket.on('delete_item', async ({ type, ids, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
@@ -194,7 +218,7 @@ module.exports = function(io, socket) {
                                         const r = f.rooms.find(x => x.id === ids.roomId);
                                         if (r) {
                                             r.tasks = r.tasks.filter(t => t.id !== ids.taskId);
-                                            createLog(io, user.username, user.role, 'Удаление', `Удалена задача в ${r.name}`);
+                                            createLog(io, user.username, user.role, 'Удаление', `Удалена работа в ${r.name}`);
                                         }
                                     }
                                 }
@@ -246,7 +270,8 @@ module.exports = function(io, socket) {
 
             const copyTasks = (tasks) => tasks.map(t => ({
                 id: genId(), name: t.name, groupId: t.groupId, volume: t.volume, unit: t.unit,
-                unit_power: t.unit_power, type: t.type, work_done: false, doc_done: false, comments: []
+                work_done: false, doc_done: false, comments: [],
+                materials: t.materials ? t.materials.map(m => ({...m, id: genId()})) : []
             }));
 
             if (type === 'floor') {
@@ -338,14 +363,8 @@ module.exports = function(io, socket) {
         } catch(e) { console.error(e); }
     });
 
-    // ===============================================
-    // СТАТУСЫ И ЛОГИКА
-    // ===============================================
     socket.on('toggle_task_status', async ({ buildingId, contractId, floorId, roomId, taskId, field, value, user }) => {
         try {
-            // Оптимизация: Используем updateOne с позиционным оператором $, чтобы не тащить весь объект
-            // Но структура слишком глубокая для простого оператора без arrayFilters в старых версиях.
-            // Оставим findOne+save для надежности, но уберем лишние проверки.
             const b = await Building.findOne({ id: buildingId });
             const c = b?.contracts.find(x => x.id === contractId);
             const f = c?.floors.find(x => x.id === floorId);
@@ -355,19 +374,11 @@ module.exports = function(io, socket) {
             if (task) {
                 task[field] = value;
                 await b.save();
+                await broadcastBuildings(); // Оптимизация возможна, но для надежности пока так
                 
-                // Тут происходит задержка из-за отправки всех данных.
-                // В идеале нужно делать emit только изменения ('task_updated', { ... }), но 
-                // для этого нужно менять логику на фронте (useEffect socket.on('task_updated')).
-                // Чтобы не ломать архитектуру сейчас, оставляем как есть, но убеждаемся, что нет лишних вычислений.
-                await broadcastBuildings();
-                
-                const typeLabel = task.type === 'mtr' ? 'МТР' : 'СМР';
-                const actionLabel = field === 'work_done' ? (task.type==='mtr'?'На объекте':'Сделано') : (task.type==='mtr'?'Проверено':'ИД сдана');
+                const actionLabel = field === 'work_done' ? 'СМР Сделано' : 'ИД Сдана';
                 const statusLabel = value ? 'Да' : 'Нет';
-                
-                // Логирование асинхронно, не блокируем поток
-                createLog(io, user.username, user.role, `Статус ${typeLabel}`, `${r.name} -> ${task.name}: ${actionLabel} = ${statusLabel}`);
+                createLog(io, user.username, user.role, 'Статус', `${r.name} -> ${task.name}: ${actionLabel} = ${statusLabel}`);
             }
         } catch(e) { console.error(e); }
     });
@@ -407,9 +418,7 @@ module.exports = function(io, socket) {
         } catch (e) { console.error(e); }
     });
 
-    // ===============================================
-    // ОБЩИЕ
-    // ===============================================
+    // --- Общие ---
     socket.on('get_logs', async ({ page = 1, search = '', user }) => {
         if (!user || !['admin', 'director'].includes(user.role)) return;
         const limit = 50;
