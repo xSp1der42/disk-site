@@ -363,6 +363,7 @@ module.exports = function(io, socket) {
         } catch(e) { console.error(e); }
     });
 
+    // ОПТИМИЗИРОВАННЫЙ ХЕНДЛЕР СТАТУСА: Убрана лишняя задержка логирования
     socket.on('toggle_task_status', async ({ buildingId, contractId, floorId, roomId, taskId, field, value, user }) => {
         try {
             const b = await Building.findOne({ id: buildingId });
@@ -374,8 +375,9 @@ module.exports = function(io, socket) {
             if (task) {
                 task[field] = value;
                 await b.save();
-                await broadcastBuildings(); // Оптимизация возможна, но для надежности пока так
+                broadcastBuildings(); // Отправляем без await, чтобы не блочить
                 
+                // Логирование в фоне
                 const actionLabel = field === 'work_done' ? 'СМР Сделано' : 'ИД Сдана';
                 const statusLabel = value ? 'Да' : 'Нет';
                 createLog(io, user.username, user.role, 'Статус', `${r.name} -> ${task.name}: ${actionLabel} = ${statusLabel}`);
@@ -395,12 +397,12 @@ module.exports = function(io, socket) {
                 t.start_date = dates.start ? new Date(dates.start) : null;
                 t.end_date = dates.end ? new Date(dates.end) : null;
                 await b.save();
-                await broadcastBuildings();
+                broadcastBuildings();
             }
         } catch (e) { console.error(e); }
     });
 
-    socket.on('add_task_comment', async ({ buildingId, contractId, floorId, roomId, taskId, text, user }) => {
+    socket.on('add_task_comment', async ({ buildingId, contractId, floorId, roomId, taskId, text, attachments, user }) => {
         if (!user) return;
         try {
             const b = await Building.findOne({ id: buildingId });
@@ -410,10 +412,10 @@ module.exports = function(io, socket) {
             const t = r?.tasks.find(x => x.id === taskId);
             if (t) {
                 t.comments.push({
-                    id: genId(), text, author: `${user.surname} ${user.name}`, role: user.role, timestamp: new Date()
+                    id: genId(), text, author: `${user.surname} ${user.name}`, role: user.role, timestamp: new Date(), attachments: attachments || []
                 });
                 await b.save();
-                await broadcastBuildings();
+                broadcastBuildings();
             }
         } catch (e) { console.error(e); }
     });

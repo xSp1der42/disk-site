@@ -14,32 +14,36 @@ const BuildingSchema = new mongoose.Schema({
             order: { type: Number, default: 0 },
             rooms: [{
                 id: String,
-                name: String, // "Помещение"
+                name: String,
                 order: { type: Number, default: 0 },
-                tasks: [{ // Это СМР (Работы)
+                tasks: [{
                     id: String,
                     name: String,
                     groupId: String,
                     volume: { type: Number, default: 0 },
-                    unit: { type: String, default: 'шт' }, // м2, м.п, шт и т.д.
-                    work_done: { type: Boolean, default: false }, // Выполнено
-                    doc_done: { type: Boolean, default: false },  // ИД сдана
+                    unit: { type: String, default: 'шт' },
+                    work_done: { type: Boolean, default: false },
+                    doc_done: { type: Boolean, default: false },
                     start_date: { type: Date, default: null },
                     end_date: { type: Date, default: null },
+                    updatedAt: { type: Date, default: Date.now }, // Для отслеживания изменений
                     comments: [{
                         id: String,
                         text: String,
                         author: String,
                         role: String,
-                        timestamp: { type: Date, default: Date.now }
+                        timestamp: { type: Date, default: Date.now },
+                        attachments: [{ // Файлы
+                            name: String,
+                            data: String, // Base64 (для простоты) или URL
+                            type: String // image/png, application/pdf
+                        }]
                     }],
-                    // НОВОЕ: МТР внутри СМР
                     materials: [{
                         id: String,
                         name: String,
-                        coefficient: { type: Number, default: 1 }, // Коэффициент расхода
-                        unit: { type: String, default: 'шт' },
-                        // Объем берется из родительской задачи * коэффициент
+                        coefficient: { type: Number, default: 1 },
+                        unit: { type: String, default: 'шт' }
                     }]
                 }]
             }]

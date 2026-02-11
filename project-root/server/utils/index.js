@@ -4,7 +4,8 @@ const genId = () => Math.random().toString(36).substr(2, 9);
 
 // Права
 const canEditStructure = (role) => ['admin', 'architect'].includes(role);
-const canEditGroups = (role) => ['admin'].includes(role);
+// Проектировщик теперь имеет право работать с группами (Req 11)
+const canEditGroups = (role) => ['admin', 'architect'].includes(role);
 
 // Логирование
 async function createLog(io, username, role, action, details) {

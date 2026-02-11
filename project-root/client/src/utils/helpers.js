@@ -1,6 +1,5 @@
-// Логика статусов (Новые цвета по ТЗ)
+// Логика статусов (Req 7: Не готово -> В работе -> Выполнено)
 export const getRoomStatus = (room, filterGroupId) => {
-    // 1. Получаем список задач (с учетом фильтра)
     let filteredTasks = room.tasks || [];
     if (filterGroupId && filterGroupId !== '') {
         filteredTasks = room.tasks.filter(t => {
@@ -9,35 +8,44 @@ export const getRoomStatus = (room, filterGroupId) => {
         });
     }
 
-    if (filteredTasks.length === 0) return 'status-none'; // Пусто (серый)
+    if (filteredTasks.length === 0) return 'status-none';
 
-    let allWorkDone = true;
-    let allDocDone = true;
-    let hasAnyProgress = false; // Хотя бы одна галочка (СМР или ИД)
-    let hasAllWork = true;      // Все СМР готовы
-    let hasAllDoc = true;       // Все ИД готовы
+    let allDone = true;
+    let anyStarted = false;
 
     filteredTasks.forEach(t => {
-        if (t.work_done) hasAnyProgress = true;
-        else hasAllWork = false;
-
-        if (t.doc_done) hasAnyProgress = true;
-        else hasAllDoc = false;
-
-        // Для полного зеленого нужно чтобы И то, И другое было готово у всех задач
-        if (!t.work_done) allWorkDone = false;
-        if (!t.doc_done) allDocDone = false;
+        // Статус "Выполнено" требует галочки ИД (подтверждено)
+        // Если галочки ИД нет, значит работа не закрыта полностью
+        if (!t.doc_done) allDone = false;
+        
+        // Статус "В работе" (Начато) - есть галочка СМР или есть материалы
+        if (t.work_done || t.doc_done || (t.materials && t.materials.length > 0)) {
+            anyStarted = true;
+        }
     });
 
-    // Зеленый: Всё готово (и стройка, и документы)
-    if (allWorkDone && allDocDone) return 'status-green';
+    if (allDone) return 'status-green'; // Выполнено
+    if (anyStarted) return 'status-yellow'; // В работе
+    return 'status-red'; // Не готово
+};
 
-    // Оранжевый: Либо стройка вся готова, Либо документы все готовы (но не вместе)
-    if (hasAllWork || hasAllDoc) return 'status-orange';
+// Проверка на непросмотренные изменения (Req 9)
+export const checkUnseenChanges = (room) => {
+    if (!room || !room.tasks) return false;
+    const lastViewed = localStorage.getItem(`viewed_room_${room.id}`);
+    if (!lastViewed) return false; // Если никогда не открывали, не спамим (или true, по желанию)
 
-    // Желтый: Работа началась (есть хоть одна галочка), но разделы целиком не закрыты
-    if (hasAnyProgress) return 'status-yellow';
+    // Если есть задача, обновленная ПОЗЖЕ, чем мы смотрели комнату
+    return room.tasks.some(t => new Date(t.updatedAt) > new Date(lastViewed));
+};
 
-    // Красный: Ничего не начато
-    return 'status-red';
+// Проверка на непрочитанные сообщения
+export const checkUnreadMessages = (room) => {
+    if (!room || !room.tasks) return false;
+    return room.tasks.some(t => {
+        const lastRead = localStorage.getItem(`read_comments_${t.id}`);
+        if (!t.comments || t.comments.length === 0) return false;
+        if (!lastRead) return true;
+        return new Date(t.comments[t.comments.length - 1].timestamp) > new Date(lastRead);
+    });
 };

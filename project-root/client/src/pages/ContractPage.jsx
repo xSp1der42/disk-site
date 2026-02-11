@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FileText, ArrowLeft, PlusCircle, Pencil, Trash2, PieChart, Copy, GripVertical, Move, Filter, X } from 'lucide-react';
-import { getRoomStatus } from '../utils/helpers';
+import { FileText, ArrowLeft, PlusCircle, Pencil, Trash2, PieChart, Copy, GripVertical, Move, Filter, X, BarChart } from 'lucide-react';
+import { getRoomStatus, checkUnreadMessages, checkUnseenChanges } from '../utils/helpers';
 
 const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysActions }) => {
     const { buildingId, contractId } = useParams();
@@ -11,18 +11,14 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysAc
     const contract = building?.contracts.find(c => c.id === contractId);
     const hasEditRights = ['admin', 'architect'].includes(user.role);
 
-    // DnD & Filter State
     const [isReorderingMode, setIsReorderingMode] = useState(false);
     const [draggedItem, setDraggedItem] = useState(null); 
     const [filterGroupId, setFilterGroupId] = useState('');
 
-    // Статистика по Договору (шапка)
     const stats = useMemo(() => {
         if (!contract) return null;
         let total = 0, work = 0, doc = 0, vol = 0;
         contract.floors.forEach(f => f.rooms.forEach(r => r.tasks.forEach(t => {
-            // Для общей статистики считаем задачи целиком или галочки - как вам удобнее.
-            // Здесь оставил по количеству задач для "Всего", но прогресс по галочкам
             total++; 
             if(t.work_done) work++;
             if(t.doc_done) doc++;
@@ -33,66 +29,39 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysAc
 
     if (!contract) return <div className="content-area">Договор не найден</div>;
 
-    // --- Actions ---
-    const handleAddFloor = () => {
-        sysActions.prompt("Новый этаж", "Название (например: 2 Этаж):", (name) => {
-            actions.addFloor(building.id, contract.id, name);
+    // Расчет аналитики по этажу
+    const getFloorStats = (floor) => {
+        if (!filterGroupId) return null; // Только когда есть фильтр
+        let floorVol = 0;
+        let floorDoneVol = 0;
+        floor.rooms.forEach(r => {
+            r.tasks.forEach(t => {
+                if ((t.groupId || 'uncategorized') === filterGroupId) {
+                    floorVol += (t.volume || 0);
+                    if (t.work_done) floorDoneVol += (t.volume || 0);
+                }
+            });
         });
+        const percent = floorVol > 0 ? Math.round((floorDoneVol / floorVol) * 100) : 0;
+        return { vol: floorVol, done: floorDoneVol, percent };
     };
 
-    const handleAddRoom = (floorId) => {
-        sysActions.prompt("Новое помещение", "Номер/Название:", (name) => {
-            actions.addRoom(building.id, contract.id, floorId, name);
-        });
-    };
+    // Actions
+    const handleAddFloor = () => sysActions.prompt("Новый этаж", "Название:", (name) => actions.addFloor(building.id, contract.id, name));
+    const handleAddRoom = (floorId) => sysActions.prompt("Новое помещение", "Название:", (name) => actions.addRoom(building.id, contract.id, floorId, name));
+    const handleRenameFloor = (floorId, oldName) => sysActions.prompt("Переименование", "Новое название:", (newName) => { if(newName!==oldName) actions.renameItem('floor', {buildingId: building.id, contractId: contract.id, floorId}, newName); }, oldName);
+    const handleDeleteFloor = (floorId) => sysActions.confirm("Удаление", "Удалить этаж?", () => actions.deleteItem('floor', { buildingId: building.id, contractId: contract.id, floorId }));
+    const handleCopyFloor = (floorId) => sysActions.confirm("Копирование", "Дублировать этаж?", () => actions.copyItem('floor', { buildingId: building.id, contractId: contract.id, floorId }));
+    const handleCopyRoom = (floorId, roomId, e) => { e.stopPropagation(); sysActions.confirm("Копирование", "Дублировать помещение?", () => actions.copyItem('room', { buildingId: building.id, contractId: contract.id, floorId, roomId })); };
 
-    const handleRenameFloor = (floorId, oldName) => {
-        sysActions.prompt("Переименование", "Новое название этажа:", (newName) => {
-            if(newName !== oldName) actions.renameItem('floor', {buildingId: building.id, contractId: contract.id, floorId}, newName);
-        }, oldName);
-    };
-
-    const handleDeleteFloor = (floorId) => {
-        sysActions.confirm("Удаление этажа", "Удалить этаж и все помещения?", () => {
-            actions.deleteItem('floor', { buildingId: building.id, contractId: contract.id, floorId });
-        });
-    };
-
-    const handleCopyFloor = (floorId) => {
-        sysActions.confirm("Копирование", "Дублировать этаж?", () => {
-            actions.copyItem('floor', { buildingId: building.id, contractId: contract.id, floorId });
-        });
-    };
-
-    const handleCopyRoom = (floorId, roomId, e) => {
-        e.stopPropagation();
-        sysActions.confirm("Копирование", "Дублировать помещение?", () => {
-            actions.copyItem('room', { buildingId: building.id, contractId: contract.id, floorId, roomId });
-        });
-    };
-
-    // --- DnD ---
-    const onDragStart = (e, type, item, index, parentId) => {
-        if (!isReorderingMode) return;
-        e.stopPropagation();
-        setDraggedItem({ type, id: item.id, index, parentId });
-        e.target.classList.add('dragging');
-    };
-
-    const onDragEnd = (e) => {
-        e.target.classList.remove('dragging');
-        setDraggedItem(null);
-    };
-
+    // DnD
+    const onDragStart = (e, type, item, index, parentId) => { if (!isReorderingMode) return; e.stopPropagation(); setDraggedItem({ type, id: item.id, index, parentId }); e.target.classList.add('dragging'); };
+    const onDragEnd = (e) => { e.target.classList.remove('dragging'); setDraggedItem(null); };
     const onDrop = (e, type, targetIndex, targetParentId) => {
-        if (!isReorderingMode || !draggedItem || draggedItem.type !== type) return;
-        e.preventDefault(); e.stopPropagation();
-        
+        if (!isReorderingMode || !draggedItem || draggedItem.type !== type) return; e.preventDefault(); e.stopPropagation();
         if (type === 'room' && targetParentId !== draggedItem.parentId) return;
         if (draggedItem.index === targetIndex) return;
-
-        actions.reorderItem(type, building.id, contract.id, targetParentId, draggedItem.index, targetIndex);
-        setDraggedItem(null);
+        actions.reorderItem(type, building.id, contract.id, targetParentId, draggedItem.index, targetIndex); setDraggedItem(null);
     };
 
     return (
@@ -100,13 +69,8 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysAc
             <div className="control-bar">
                 <div className="control-group">
                     <div className="control-label">{building.name}</div>
-                    <div className="control-value">
-                        <span style={{display:'flex', alignItems:'center', gap:10}}>
-                            <FileText size={24} color="var(--accent-secondary)"/> {contract.name}
-                        </span>
-                    </div>
+                    <div className="control-value"><span style={{display:'flex', alignItems:'center', gap:10}}><FileText size={24} color="var(--accent-secondary)"/> {contract.name}</span></div>
                 </div>
-                
                 <div className="control-actions">
                      <div className="filter-dropdown-container">
                         <Filter size={16} style={{marginRight: 8, color: 'var(--text-muted)'}} />
@@ -117,21 +81,8 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysAc
                         </select>
                         {filterGroupId && <button className="icon-btn-danger" onClick={() => setFilterGroupId('')}><X size={14}/></button>}
                     </div>
-
-                    <button className="action-btn secondary" onClick={() => navigate(`/dashboard/${building.id}`)}>
-                        <ArrowLeft size={16} /> Назад
-                    </button>
-                    
-                    {hasEditRights && (
-                        <>
-                            <button className={`action-btn ${isReorderingMode ? 'primary' : 'secondary'}`} onClick={() => setIsReorderingMode(!isReorderingMode)}>
-                                <Move size={18}/>
-                            </button>
-                            <button className="action-btn primary" onClick={handleAddFloor}>
-                                <PlusCircle size={18}/> Добавить этаж
-                            </button>
-                        </>
-                    )}
+                    <button className="action-btn secondary" onClick={() => navigate(`/dashboard/${building.id}`)}><ArrowLeft size={16} /> Назад</button>
+                    {hasEditRights && <><button className={`action-btn ${isReorderingMode ? 'primary' : 'secondary'}`} onClick={() => setIsReorderingMode(!isReorderingMode)}><Move size={18}/></button><button className="action-btn primary" onClick={handleAddFloor}><PlusCircle size={18}/> Добавить этаж</button></>}
                 </div>
             </div>
 
@@ -140,100 +91,75 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysAc
                     <div style={{background:'var(--bg-active)', padding: 10, borderRadius: '50%'}}><PieChart size={24} color="var(--accent-primary)"/></div>
                     <div><div style={{fontSize:'0.8rem', color:'var(--text-muted)'}}>Всего задач</div><div style={{fontSize:'1.2rem', fontWeight:700}}>{stats.total}</div></div>
                 </div>
-                <div style={{background:'var(--bg-card)', padding: 20, borderRadius: 12, border: '1px solid var(--border-color)', display:'flex', alignItems:'center', gap: 15}}>
-                     <div style={{background:'var(--status-green-bg)', padding: 10, borderRadius: '50%'}}><PieChart size={24} color="#166534"/></div>
-                    <div><div style={{fontSize:'0.8rem', color:'var(--text-muted)'}}>СМР Готово</div><div style={{fontSize:'1.2rem', fontWeight:700, color:'#166534'}}>{stats.work}</div></div>
-                </div>
-                <div style={{background:'var(--bg-card)', padding: 20, borderRadius: 12, border: '1px solid var(--border-color)', display:'flex', alignItems:'center', gap: 15}}>
-                     <div style={{background:'var(--status-orange-bg)', padding: 10, borderRadius: '50%'}}><PieChart size={24} color="#c2410c"/></div>
-                    <div><div style={{fontSize:'0.8rem', color:'var(--text-muted)'}}>ИД Сдано</div><div style={{fontSize:'1.2rem', fontWeight:700, color:'#c2410c'}}>{stats.doc}</div></div>
-                </div>
-                 <div style={{background:'var(--bg-card)', padding: 20, borderRadius: 12, border: '1px solid var(--border-color)', display:'flex', alignItems:'center', gap: 15}}>
-                     <div style={{background:'#e0f2fe', padding: 10, borderRadius: '50%'}}><PieChart size={24} color="#0284c7"/></div>
-                    <div><div style={{fontSize:'0.8rem', color:'var(--text-muted)'}}>Объем</div><div style={{fontSize:'1.2rem', fontWeight:700, color:'#0284c7'}}>{stats.vol.toFixed(1)}</div></div>
-                </div>
+                {/* Stats cards ... */}
+                <div style={{background:'var(--bg-card)', padding: 20, borderRadius: 12, border: '1px solid var(--border-color)', display:'flex', alignItems:'center', gap: 15}}><div style={{background:'var(--status-green-bg)', padding: 10, borderRadius: '50%'}}><PieChart size={24} color="#166534"/></div><div><div style={{fontSize:'0.8rem', color:'var(--text-muted)'}}>СМР Готово</div><div style={{fontSize:'1.2rem', fontWeight:700, color:'#166534'}}>{stats.work}</div></div></div>
+                <div style={{background:'var(--bg-card)', padding: 20, borderRadius: 12, border: '1px solid var(--border-color)', display:'flex', alignItems:'center', gap: 15}}><div style={{background:'var(--status-orange-bg)', padding: 10, borderRadius: '50%'}}><PieChart size={24} color="#c2410c"/></div><div><div style={{fontSize:'0.8rem', color:'var(--text-muted)'}}>ИД Сдано</div><div style={{fontSize:'1.2rem', fontWeight:700, color:'#c2410c'}}>{stats.doc}</div></div></div>
+                <div style={{background:'var(--bg-card)', padding: 20, borderRadius: 12, border: '1px solid var(--border-color)', display:'flex', alignItems:'center', gap: 15}}><div style={{background:'#e0f2fe', padding: 10, borderRadius: '50%'}}><PieChart size={24} color="#0284c7"/></div><div><div style={{fontSize:'0.8rem', color:'var(--text-muted)'}}>Объем</div><div style={{fontSize:'1.2rem', fontWeight:700, color:'#0284c7'}}>{stats.vol.toFixed(1)}</div></div></div>
             </div>
 
             <div className="content-area">
                 <div className="floors-list">
-                    {contract.floors.map((floor, floorIndex) => (
-                        <div 
-                            key={floor.id} 
-                            className="floor-block"
-                            draggable={isReorderingMode}
-                            onDragStart={(e) => onDragStart(e, 'floor', floor, floorIndex, contract.id)}
-                            onDragEnd={onDragEnd}
-                            onDragOver={(e) => { if(isReorderingMode) e.preventDefault(); }}
-                            onDrop={(e) => onDrop(e, 'floor', floorIndex, contract.id)}
-                            style={{ cursor: isReorderingMode ? 'grab' : 'default', borderStyle: isReorderingMode ? 'dashed' : 'solid' }}
-                        >
-                            <div className="floor-header">
-                                <span className="floor-title">
-                                    {isReorderingMode && <GripVertical size={20} style={{marginRight: 8}}/>}
-                                    {floor.name}
-                                    {hasEditRights && !isReorderingMode && <button className="icon-btn-edit" style={{marginLeft:10}} onClick={() => handleRenameFloor(floor.id, floor.name)}><Pencil size={14}/></button>}
-                                </span>
-                                {hasEditRights && !isReorderingMode && (
-                                    <div className="floor-actions" style={{display:'flex', alignItems:'center', gap: 15}}>
-                                        <button className="text-btn" onClick={() => handleAddRoom(floor.id)}>+ Помещение</button>
-                                        <button className="icon-btn-edit" onClick={() => handleCopyFloor(floor.id)}><Copy size={16}/></button>
-                                        <button className="icon-btn-danger" onClick={() => handleDeleteFloor(floor.id)}><Trash2 size={16}/></button>
+                    {contract.floors.map((floor, floorIndex) => {
+                        const floorStats = getFloorStats(floor);
+                        return (
+                            <div key={floor.id} className="floor-block" draggable={isReorderingMode} onDragStart={(e) => onDragStart(e, 'floor', floor, floorIndex, contract.id)} onDragEnd={onDragEnd} onDragOver={(e) => { if(isReorderingMode) e.preventDefault(); }} onDrop={(e) => onDrop(e, 'floor', floorIndex, contract.id)} style={{ cursor: isReorderingMode ? 'grab' : 'default', borderStyle: isReorderingMode ? 'dashed' : 'solid' }}>
+                                
+                                {/* АНАЛИТИКА ПО ЭТАЖУ */}
+                                {floorStats && (
+                                    <div style={{background: '#f8fafc', padding: '8px 24px', borderBottom: '1px solid var(--border-color)', display:'flex', gap: 20, fontSize: '0.8rem', color: 'var(--text-muted)'}}>
+                                        <div style={{display:'flex', alignItems:'center', gap:6}}><BarChart size={14}/> Аналитика этажа:</div>
+                                        <div>Объем: <b>{floorStats.vol}</b></div>
+                                        <div>Выполнено: <b>{floorStats.done} ({floorStats.percent}%)</b></div>
+                                        <div style={{flex:1, height: 6, background: '#e2e8f0', borderRadius:3, alignSelf:'center', maxWidth: 100}}><div style={{width: `${floorStats.percent}%`, background: '#3b82f6', height:'100%', borderRadius:3}}></div></div>
                                     </div>
                                 )}
-                            </div>
-                            <div className="rooms-grid">
-                                {floor.rooms.map((room, roomIndex) => {
-                                    const statusClass = getRoomStatus(room, filterGroupId);
-                                    let isHighlighted = false;
-                                    if (filterGroupId) isHighlighted = room.tasks.some(t => (t.groupId || 'uncategorized') === filterGroupId);
 
-                                    return (
-                                        <div 
-                                            key={room.id} 
-                                            className={`room-item ${statusClass} ${isHighlighted ? 'filtered-highlight' : ''}`}
-                                            onClick={() => setSelectedRoom({ buildingId: building.id, contractId: contract.id, floorId: floor.id, room })}
-                                            draggable={isReorderingMode}
-                                            onDragStart={(e) => onDragStart(e, 'room', room, roomIndex, floor.id)}
-                                            onDragEnd={onDragEnd}
-                                            onDragOver={(e) => { if(isReorderingMode) e.preventDefault(); }}
-                                            onDrop={(e) => onDrop(e, 'room', roomIndex, floor.id)}
-                                            style={{cursor: isReorderingMode ? 'grab' : 'pointer'}}
-                                        >
-                                            {hasEditRights && !isReorderingMode && (
-                                                <div style={{position:'absolute', top:4, right:4, opacity:0.6}} onClick={(e) => handleCopyRoom(floor.id, room.id, e)}><Copy size={14}/></div>
-                                            )}
-                                            <div className="room-name">{room.name}</div>
-                                            <div className="room-stats">
-                                                {/* ИСПРАВЛЕННАЯ ЛОГИКА 0/2 */}
-                                                {(() => {
-                                                    const tasks = room.tasks || [];
-                                                    const filtered = filterGroupId 
-                                                        ? tasks.filter(t => (t.groupId || 'uncategorized') === filterGroupId) 
-                                                        : tasks;
-                                                    
-                                                    // Считаем общее количество "галочек" (СМР + ИД)
-                                                    const totalPoints = filtered.length * 2;
-                                                    
-                                                    // Считаем выполненные галочки
-                                                    let donePoints = 0;
-                                                    filtered.forEach(t => {
-                                                        if (t.work_done) donePoints++;
-                                                        if (t.doc_done) donePoints++;
-                                                    });
+                                <div className="floor-header">
+                                    <span className="floor-title">{isReorderingMode && <GripVertical size={20} style={{marginRight: 8}}/>}{floor.name}{hasEditRights && !isReorderingMode && <button className="icon-btn-edit" style={{marginLeft:10}} onClick={() => handleRenameFloor(floor.id, floor.name)}><Pencil size={14}/></button>}</span>
+                                    {hasEditRights && !isReorderingMode && <div className="floor-actions" style={{display:'flex', alignItems:'center', gap: 15}}><button className="text-btn" onClick={() => handleAddRoom(floor.id)}>+ Помещение</button><button className="icon-btn-edit" onClick={() => handleCopyFloor(floor.id)}><Copy size={16}/></button><button className="icon-btn-danger" onClick={() => handleDeleteFloor(floor.id)}><Trash2 size={16}/></button></div>}
+                                </div>
+                                <div className="rooms-grid">
+                                    {floor.rooms.map((room, roomIndex) => {
+                                        const statusClass = getRoomStatus(room, filterGroupId);
+                                        const isHighlighted = filterGroupId ? room.tasks.some(t => (t.groupId || 'uncategorized') === filterGroupId) : false;
+                                        
+                                        const hasUnread = checkUnreadMessages(room);
+                                        const hasUnseen = checkUnseenChanges(room);
 
-                                                    // Если работ нет
-                                                    if (totalPoints === 0) return 'Нет работ';
-
-                                                    return `${donePoints}/${totalPoints}`;
-                                                })()}
+                                        return (
+                                            <div key={room.id} className={`room-item ${statusClass} ${isHighlighted ? 'filtered-highlight' : ''}`} onClick={() => setSelectedRoom({ buildingId: building.id, contractId: contract.id, floorId: floor.id, room })} draggable={isReorderingMode} onDragStart={(e) => onDragStart(e, 'room', room, roomIndex, floor.id)} onDragEnd={onDragEnd} onDragOver={(e) => { if(isReorderingMode) e.preventDefault(); }} onDrop={(e) => onDrop(e, 'room', roomIndex, floor.id)} style={{cursor: isReorderingMode ? 'grab' : 'pointer'}}>
+                                                {/* Индикатор уведомлений */}
+                                                {(hasUnread || hasUnseen) && <div style={{position:'absolute', top: -5, right: -5, width: 12, height: 12, background: hasUnread ? '#ef4444' : '#3b82f6', borderRadius: '50%', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.2)', zIndex: 5}}></div>}
+                                                
+                                                {hasEditRights && !isReorderingMode && <div style={{position:'absolute', top:4, right:4, opacity:0.6}} onClick={(e) => handleCopyRoom(floor.id, room.id, e)}><Copy size={14}/></div>}
+                                                <div className="room-name">{room.name}</div>
+                                                <div className="room-stats">
+                                                    {/* ИСПРАВЛЕННАЯ ЛОГИКА 0/2 (БАЛЛЫ) */}
+                                                    {(() => {
+                                                        const tasks = room.tasks || [];
+                                                        const filtered = filterGroupId ? tasks.filter(t => (t.groupId || 'uncategorized') === filterGroupId) : tasks;
+                                                        
+                                                        // 1 задача = 2 балла (1 за СМР, 1 за ИД)
+                                                        const totalPoints = filtered.length * 2;
+                                                        let donePoints = 0;
+                                                        
+                                                        filtered.forEach(t => { 
+                                                            if (t.work_done) donePoints++; 
+                                                            if (t.doc_done) donePoints++; 
+                                                        });
+                                                        
+                                                        if (totalPoints === 0) return 'Нет работ';
+                                                        return `${donePoints}/${totalPoints}`;
+                                                    })()}
+                                                </div>
                                             </div>
-                                        </div>
-                                    );
-                                })}
-                                {floor.rooms.length === 0 && <div style={{width:'100%', textAlign:'center', padding:10, color:'var(--text-muted)'}}>Пусто</div>}
+                                        );
+                                    })}
+                                    {floor.rooms.length === 0 && <div style={{width:'100%', textAlign:'center', padding:10, color:'var(--text-muted)'}}>Пусто</div>}
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
                 {contract.floors.length === 0 && <div style={{textAlign:'center', padding:40, color:'var(--text-muted)'}}>Добавьте этажи</div>}
             </div>
