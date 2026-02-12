@@ -35,7 +35,6 @@ const ChatPopup = ({ task, currentUser, onAddComment, onClose }) => {
         const file = e.target.files[0];
         if (!file) return;
         
-        // Лимит 8MB для сокетов
         if (file.size > 8 * 1024 * 1024) {
             alert("Файл слишком большой (макс 8МБ)");
             return;
@@ -44,7 +43,6 @@ const ChatPopup = ({ task, currentUser, onAddComment, onClose }) => {
         const reader = new FileReader();
         reader.onload = (evt) => {
             const base64 = evt.target.result;
-            // Отправляем как текст комментария + массив вложений
             onAddComment("📎 " + file.name, [{ name: file.name, data: base64, type: file.type }]);
         };
         reader.readAsDataURL(file);
@@ -103,10 +101,17 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
     
     const [isAddingSMR, setIsAddingSMR] = useState(false);
     const [newSMR, setNewSMR] = useState({ name: '', groupId: '', volume: '', unit: 'м²' });
+    
     const [addingMTRForTask, setAddingMTRForTask] = useState(null); 
     const [newMTR, setNewMTR] = useState({ name: '', coefficient: '1', unit: 'шт' });
+    
+    // Состояния для редактирования СМР
     const [editingTask, setEditingTask] = useState(null);
     const [editTaskData, setEditTaskData] = useState({ name: '', groupId: '', volume: '', unit: '' });
+
+    // Состояния для редактирования МТР
+    const [editingMaterial, setEditingMaterial] = useState(null); // ID материала
+    const [editMaterialData, setEditMaterialData] = useState({ name: '', coefficient: '', unit: '' });
     
     const [activeDatePopup, setActiveDatePopup] = useState(null);
     const [activeChatPopup, setActiveChatPopup] = useState(null);
@@ -132,10 +137,21 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
     }, [filteredTasks, groups]);
 
     const handleAddSMR = (e) => { e.preventDefault(); actions.addTask(selectedRoom.buildingId, selectedRoom.contractId, selectedRoom.floorId, selectedRoom.room.id, { ...newSMR, groupId: newSMR.groupId === 'uncategorized' ? '' : newSMR.groupId }); setIsAddingSMR(false); setNewSMR({ name: '', groupId: '', volume: '', unit: 'м²' }); };
+    
     const handleAddMTR = (e, taskId) => { e.preventDefault(); socket.emit('add_material', { buildingId: selectedRoom.buildingId, contractId: selectedRoom.contractId, floorId: selectedRoom.floorId, roomId: selectedRoom.room.id, taskId: taskId, matName: newMTR.name, coefficient: newMTR.coefficient, unit: newMTR.unit, user: currentUser }); setAddingMTRForTask(null); setNewMTR({ name: '', coefficient: '1', unit: 'шт' }); };
     const handleDeleteMTR = (taskId, matId) => { socket.emit('delete_material', { buildingId: selectedRoom.buildingId, contractId: selectedRoom.contractId, floorId: selectedRoom.floorId, roomId: selectedRoom.room.id, taskId, matId, user: currentUser }); };
+
+    // Редактирование СМР
     const startEditing = (task) => { setEditingTask(task.id); setEditTaskData({ name: task.name, groupId: task.groupId || '', volume: task.volume, unit: task.unit || '' }); };
     const saveEditing = (taskId) => { actions.editTask(selectedRoom.buildingId, selectedRoom.contractId, selectedRoom.floorId, selectedRoom.room.id, taskId, editTaskData); setEditingTask(null); };
+    
+    // Редактирование МТР
+    const startEditingMaterial = (mat) => { setEditingMaterial(mat.id); setEditMaterialData({ name: mat.name, coefficient: mat.coefficient, unit: mat.unit }); };
+    const saveEditingMaterial = (taskId, matId) => { 
+        socket.emit('edit_material', { buildingId: selectedRoom.buildingId, contractId: selectedRoom.contractId, floorId: selectedRoom.floorId, roomId: selectedRoom.room.id, taskId, matId, data: editMaterialData, user: currentUser }); 
+        setEditingMaterial(null); 
+    };
+
     const handleDeleteTask = (taskId) => sysActions.confirm("Удаление", "Удалить работу?", () => actions.deleteItem('task', {buildingId: selectedRoom.buildingId, contractId: selectedRoom.contractId, floorId: selectedRoom.floorId, roomId: selectedRoom.room.id, taskId}));
     const handleDeleteRoom = () => sysActions.confirm("Удаление помещения", `Удалить "${selectedRoom.room.name}"?`, () => { actions.deleteItem('room', { buildingId: selectedRoom.buildingId, contractId: selectedRoom.contractId, floorId: selectedRoom.floorId, roomId: selectedRoom.room.id }); setSelectedRoom(null); });
     const handleRenameRoom = () => sysActions.prompt("Переименование", "Новое название:", (newName) => { if(newName !== selectedRoom.room.name) actions.renameItem('room', {buildingId: selectedRoom.buildingId, contractId: selectedRoom.contractId, floorId: selectedRoom.floorId, roomId: selectedRoom.room.id}, newName); }, selectedRoom.room.name);
@@ -191,8 +207,8 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
                                 <th style={{width: '35%'}}>Наименование (СМР / МТР)</th>
                                 <th style={{width: '15%'}}>Объем / Коэф.</th>
                                 <th style={{width: '15%', textAlign: 'center'}}>Инфо</th>
-                                <th style={{width: '15%', textAlign:'center'}}>СМР / Наличие</th>
-                                <th style={{width: '15%', textAlign:'center'}}>ИД / Документы</th>
+                                <th style={{width: '15%', textAlign:'center'}}>СМР</th>
+                                <th style={{width: '15%', textAlign:'center'}}>Документы</th>
                                 {hasEditRights && <th style={{width: '5%'}}></th>}
                             </tr>
                         </thead>
@@ -221,7 +237,7 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
                                             return (
                                                 <React.Fragment key={task.id}>
                                                     <tr style={{background: statusColor}}>
-                                                        <td>
+                                                        <td style={{ whiteSpace: 'normal', wordBreak: 'break-word', maxWidth: '300px' }}>
                                                             {editingTask === task.id ? (
                                                                 <div className="inline-edit-form">
                                                                     <input className="sm-input" style={{flex:1}} value={editTaskData.name} onChange={e=>setEditTaskData({...editTaskData, name: e.target.value})}/>
@@ -229,7 +245,7 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
                                                                 </div>
                                                             ) : (
                                                                 <div style={{display:'flex', alignItems:'center', gap: 8}}>
-                                                                    <span style={{fontWeight: 600, fontSize:'1rem', color:'var(--accent-primary)'}}>СМР</span>
+                                                                    <span style={{fontWeight: 600, fontSize:'1rem', color:'var(--accent-primary)', minWidth: 40}}>СМР</span>
                                                                     <div style={{display:'flex', flexDirection:'column'}}>
                                                                         <span>{task.name}</span>
                                                                         {dateStr && <span style={{fontSize:'0.75rem', color: deadlineColor, display:'flex', alignItems:'center', gap:4}}><Clock size={12}/> {dateStr}</span>}
@@ -272,13 +288,32 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
 
                                                     {task.materials && task.materials.map(mat => (
                                                         <tr key={mat.id} style={{background: '#fef9c3'}}>
-                                                            <td style={{paddingLeft: 40}}>
-                                                                <div style={{display:'flex', alignItems:'center', gap: 8}}>
-                                                                    <span style={{fontWeight: 600, fontSize:'0.8rem', color:'#854d0e', padding:'2px 6px', background:'rgba(0,0,0,0.05)', borderRadius:4}}>МТР</span>
-                                                                    <span>{mat.name}</span>
-                                                                </div>
+                                                            <td style={{paddingLeft: 40, whiteSpace: 'normal', wordBreak: 'break-word', maxWidth: '300px'}}>
+                                                                {editingMaterial === mat.id ? (
+                                                                    <div className="inline-edit-form">
+                                                                        <input className="sm-input" style={{flex:1}} value={editMaterialData.name} onChange={e=>setEditMaterialData({...editMaterialData, name: e.target.value})}/>
+                                                                        <button className="move-btn" onClick={() => saveEditingMaterial(task.id, mat.id)}>OK</button>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div style={{display:'flex', alignItems:'center', gap: 8}}>
+                                                                        <span style={{fontWeight: 600, fontSize:'0.8rem', color:'#854d0e', padding:'2px 6px', background:'rgba(0,0,0,0.05)', borderRadius:4, minWidth:35}}>МТР</span>
+                                                                        <span>{mat.name}</span>
+                                                                        {hasEditRights && <button className="icon-btn-edit" onClick={() => startEditingMaterial(mat)}><Pencil size={12}/></button>}
+                                                                    </div>
+                                                                )}
                                                             </td>
-                                                            <td><div style={{fontSize:'0.9rem', color:'#854d0e'}}>Расх: {mat.coefficient} {mat.unit}<br/><b>Итого: {(task.volume * mat.coefficient).toFixed(2)} {mat.unit}</b></div></td>
+                                                            <td>
+                                                                {editingMaterial === mat.id ? (
+                                                                    <div className="inline-edit-form">
+                                                                        <input type="number" step="0.01" className="sm-input" style={{width:60}} value={editMaterialData.coefficient} onChange={e=>setEditMaterialData({...editMaterialData, coefficient: e.target.value})}/>
+                                                                        <select className="sm-input" style={{width:60}} value={editMaterialData.unit} onChange={e=>setEditMaterialData({...editMaterialData, unit: e.target.value})}>
+                                                                            {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                                                                        </select>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div style={{fontSize:'0.9rem', color:'#854d0e'}}>Расх: {mat.coefficient} {mat.unit}<br/><b>Итого: {(task.volume * mat.coefficient).toFixed(2)} {mat.unit}</b></div>
+                                                                )}
+                                                            </td>
                                                             <td colSpan="3"></td>
                                                             {hasEditRights && <td style={{textAlign:'center'}}><button className="icon-btn-danger" onClick={() => handleDeleteMTR(task.id, mat.id)}><Trash2 size={14}/></button></td>}
                                                         </tr>
@@ -291,12 +326,19 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
                                                                     <form onSubmit={(e) => handleAddMTR(e, task.id)} style={{display:'flex', gap: 8, alignItems:'center', paddingLeft: 20}}>
                                                                         <span style={{fontSize:'0.8rem', fontWeight:600}}>МТР:</span>
                                                                         <input required placeholder="Название материала" className="sm-input" style={{flex:1}} value={newMTR.name} onChange={e=>setNewMTR({...newMTR, name: e.target.value})} />
-                                                                        <input type="number" step="0.01" placeholder="Коэф" className="sm-input" style={{width:60}} value={newMTR.coefficient} onChange={e=>setNewMTR({...newMTR, coefficient: e.target.value})} />
-                                                                        <select className="sm-input" style={{width:60}} value={newMTR.unit} onChange={e=>setNewMTR({...newMTR, unit: e.target.value})}>
-                                                                             {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                                                                        </select>
-                                                                        <button type="submit" className="action-btn primary" style={{padding:'4px 10px', fontSize:'0.8rem'}}>OK</button>
-                                                                        <button type="button" className="action-btn secondary" onClick={() => setAddingMTRForTask(null)}>Отмена</button>
+                                                                        {/* Исправление видимости label: добавлены placeholder и ширина */}
+                                                                        <div style={{display:'flex', flexDirection:'column', width: 60}}>
+                                                                            <span style={{fontSize:'0.6rem', color:'var(--text-muted)'}}>Коэф</span>
+                                                                            <input type="number" step="0.01" placeholder="1.0" className="sm-input" style={{width:'100%'}} value={newMTR.coefficient} onChange={e=>setNewMTR({...newMTR, coefficient: e.target.value})} />
+                                                                        </div>
+                                                                        <div style={{display:'flex', flexDirection:'column', width: 60}}>
+                                                                             <span style={{fontSize:'0.6rem', color:'var(--text-muted)'}}>Ед.</span>
+                                                                             <select className="sm-input" style={{width:'100%'}} value={newMTR.unit} onChange={e=>setNewMTR({...newMTR, unit: e.target.value})}>
+                                                                                 {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                                                                             </select>
+                                                                        </div>
+                                                                        <button type="submit" className="action-btn primary" style={{padding:'4px 10px', fontSize:'0.8rem', marginTop: 12}}>OK</button>
+                                                                        <button type="button" className="action-btn secondary" onClick={() => setAddingMTRForTask(null)} style={{marginTop: 12}}>Отмена</button>
                                                                     </form>
                                                                 ) : (
                                                                     <button className="text-btn" style={{fontSize:'0.8rem', paddingLeft: 20, display:'flex', alignItems:'center', gap:4}} onClick={() => setAddingMTRForTask(task.id)}>

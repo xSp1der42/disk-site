@@ -170,6 +170,31 @@ module.exports = function(io, socket) {
         } catch(e) { console.error(e); }
     });
 
+    // НОВОЕ: Редактирование материала
+    socket.on('edit_material', async ({ buildingId, contractId, floorId, roomId, taskId, matId, data, user }) => {
+        if (!user || !canEditStructure(user.role)) return;
+        try {
+            const b = await Building.findOne({ id: buildingId });
+            const c = b?.contracts.find(x => x.id === contractId);
+            const f = c?.floors.find(x => x.id === floorId);
+            const r = f?.rooms.find(x => x.id === roomId);
+            const t = r?.tasks.find(x => x.id === taskId);
+            
+            if (t) {
+                const mat = t.materials.find(m => m.id === matId);
+                if (mat) {
+                    if (data.name) mat.name = data.name;
+                    if (data.coefficient !== undefined) mat.coefficient = parseFloat(data.coefficient);
+                    if (data.unit) mat.unit = data.unit;
+                    
+                    await b.save();
+                    await broadcastBuildings();
+                    createLog(io, user.username, user.role, 'МТР', `Работа: ${t.name}, Изменен материал: ${mat.name}`);
+                }
+            }
+        } catch (e) { console.error(e); }
+    });
+
     socket.on('delete_material', async ({ buildingId, contractId, floorId, roomId, taskId, matId, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
@@ -363,7 +388,6 @@ module.exports = function(io, socket) {
         } catch(e) { console.error(e); }
     });
 
-    // ОПТИМИЗИРОВАННЫЙ ХЕНДЛЕР СТАТУСА: Убрана лишняя задержка логирования
     socket.on('toggle_task_status', async ({ buildingId, contractId, floorId, roomId, taskId, field, value, user }) => {
         try {
             const b = await Building.findOne({ id: buildingId });
@@ -375,9 +399,8 @@ module.exports = function(io, socket) {
             if (task) {
                 task[field] = value;
                 await b.save();
-                broadcastBuildings(); // Отправляем без await, чтобы не блочить
+                broadcastBuildings(); 
                 
-                // Логирование в фоне
                 const actionLabel = field === 'work_done' ? 'СМР Сделано' : 'ИД Сдана';
                 const statusLabel = value ? 'Да' : 'Нет';
                 createLog(io, user.username, user.role, 'Статус', `${r.name} -> ${task.name}: ${actionLabel} = ${statusLabel}`);

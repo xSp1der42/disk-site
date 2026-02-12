@@ -21,8 +21,9 @@ export const getRoomStatus = (room, filterGroupId) => {
             isFullyCompleted = false;
         }
 
-        // Условие "В работе": Хоть одна галочка стоит ИЛИ добавлены материалы
-        if (t.work_done || t.doc_done || (t.materials && t.materials.length > 0)) {
+        // Условие "В работе": Хоть одна галочка стоит
+        // ИЗМЕНЕНИЕ: Наличие материалов не считается началом работы (пункт 9)
+        if (t.work_done || t.doc_done) {
             isStarted = true;
         }
     });

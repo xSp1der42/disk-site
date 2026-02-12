@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { HardHat, LayoutDashboard, Users, Book, List, Building2, Sun, Moon, LogOut, PieChart } from 'lucide-react';
+import { HardHat, LayoutDashboard, Users, Book, List, Sun, Moon, LogOut, PieChart } from 'lucide-react';
 import { ROLES_CONFIG } from '../utils/constants';
 
 const Sidebar = ({ user, buildings, logout, theme, toggleTheme }) => {
@@ -64,14 +64,6 @@ const Sidebar = ({ user, buildings, logout, theme, toggleTheme }) => {
                     <List size={18} /> Журнал событий
                 </div>
             )}
-
-            <div className="nav-group-title">Быстрый переход</div>
-            {buildings.map(b => (
-                 <div key={b.id} className={`nav-item ${location.pathname.includes(b.id) ? 'active' : ''}`} 
-                      onClick={() => navigate(`/dashboard/${b.id}`)}>
-                    <Building2 size={16} /> {b.name}
-                 </div>
-            ))}
         </nav>
 
         <div className="sidebar-footer">
