@@ -141,7 +141,7 @@ const GroupsPage = ({ user, groups, actions, buildings, setSelectedRoom, filterG
 
                     {/* RIGHT PANEL: TREE VIEW */}
                     <div className="panel-right" style={{padding: '24px'}}>
-                         <h3 style={{margin:'0 0 16px 0', fontSize:'1.1rem'}}>Сводка по договорам</h3>
+                         <h3 style={{margin:'0 0 16px 0', fontSize:'1.1rem'}}>Сводка по документам</h3>
                          <div className="tree-container">
                             {safeBuildings.map(b => (
                                 <div key={b.id} className="tree-building">
@@ -149,17 +149,19 @@ const GroupsPage = ({ user, groups, actions, buildings, setSelectedRoom, filterG
                                         <Building2 size={20} color="var(--accent-primary)"/>
                                         {b.name}
                                     </div>
-                                    <div style={{paddingLeft: 10, paddingRight: 10}}>
+                                    {/* Здесь выводим ДОКУМЕНТЫ (contracts) */}
+                                    <div style={{padding: '0 16px 16px'}}>
                                         {(b.contracts || []).map(c => (
-                                            <div key={c.id} style={{marginTop: 10, borderLeft: '2px solid var(--border-color)', paddingLeft: 10, marginBottom: 10}}>
-                                                <div style={{fontWeight: 600, color: 'var(--text-main)', display:'flex', alignItems:'center', gap: 6, marginBottom: 8}}>
+                                            <div key={c.id} style={{marginTop: 15, borderLeft: '2px solid var(--border-color)', paddingLeft: 12}}>
+                                                <div style={{fontWeight: 700, color: 'var(--text-main)', marginBottom: 8, display:'flex', alignItems:'center', gap: 8}}>
                                                     <FileText size={16} color="var(--accent-secondary)"/>
                                                     {c.name}
                                                 </div>
-                                                <div className="tree-floors">
+                                                
+                                                <div className="tree-floors" style={{padding: 0}}>
                                                     {(c.floors || []).map(f => (
-                                                        <div key={f.id} className="tree-floor-row">
-                                                            <div className="tree-floor-title">{f.name}</div>
+                                                        <div key={f.id} className="tree-floor-row" style={{marginBottom: 8}}>
+                                                            <div className="tree-floor-title" style={{fontSize:'0.8rem'}}>{f.name}</div>
                                                             <div className="tree-rooms-list">
                                                                 {(f.rooms || []).map(r => (
                                                                     <div 
@@ -174,11 +176,11 @@ const GroupsPage = ({ user, groups, actions, buildings, setSelectedRoom, filterG
                                                             </div>
                                                         </div>
                                                     ))}
-                                                    {(c.floors || []).length === 0 && <div style={{padding:10, color:'var(--text-muted)', fontSize: '0.85rem'}}>Нет этажей</div>}
+                                                    {(c.floors || []).length === 0 && <div style={{fontSize:'0.85rem', color:'var(--text-muted)'}}>Нет этажей</div>}
                                                 </div>
                                             </div>
                                         ))}
-                                        {(b.contracts || []).length === 0 && <div style={{padding:15, color:'var(--text-muted)'}}>Нет договоров</div>}
+                                        {(b.contracts || []).length === 0 && <div style={{paddingTop: 10, color:'var(--text-muted)', fontStyle:'italic'}}>Нет документов</div>}
                                     </div>
                                 </div>
                             ))}
