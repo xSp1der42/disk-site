@@ -46,7 +46,7 @@ function App() {
   const [user, setUser] = useState(null); 
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
   
-  // ВАЖНО: Инициализация пустыми массивами
+  // ВАЖНО: Инициализация пустыми массивами для защиты от краша
   const [buildings, setBuildings] = useState([]);
   const [groups, setGroups] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
@@ -85,9 +85,8 @@ function App() {
 
   useEffect(() => {
     socket.on('init_data', (data) => {
-      // ЗАЩИТА: Если data придет null, используем пустой массив
+      // ЗАЩИТА: (data || [])
       const safeData = Array.isArray(data) ? data : [];
-      
       const sorted = safeData.map(b => ({
           ...b,
           contracts: (b.contracts || []).sort((a,b) => (a.order||0) - (b.order||0)).map(c => ({
@@ -164,7 +163,7 @@ function App() {
           emitAction('add_task', { 
               buildingId, contractId, floorId, roomId, 
               taskName: taskData.name, groupId: taskData.groupId, 
-              volume: taskData.volume, unit: taskData.unit, unit_power: taskData.unit_power,
+              volume: taskData.volume, unit: taskData.unit,
               type: taskData.type 
           });
       },
@@ -181,7 +180,9 @@ function App() {
         emitAction('toggle_task_status', { buildingId, contractId, floorId, roomId, taskId, field, value: !value });
       },
       updateTaskDates: (buildingId, contractId, floorId, roomId, taskId, dates) => emitAction('update_task_dates', { buildingId, contractId, floorId, roomId, taskId, dates }),
-      addTaskComment: (buildingId, contractId, floorId, roomId, taskId, text) => emitAction('add_task_comment', { buildingId, contractId, floorId, roomId, taskId, text })
+      
+      // ИСПРАВЛЕНО: Добавлен аргумент attachments
+      addTaskComment: (buildingId, contractId, floorId, roomId, taskId, text, attachments) => emitAction('add_task_comment', { buildingId, contractId, floorId, roomId, taskId, text, attachments })
   };
 
   return (

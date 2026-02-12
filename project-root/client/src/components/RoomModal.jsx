@@ -17,30 +17,24 @@ const DatePickerPopup = ({ task, onSave, onClose }) => {
     );
 };
 
-// --- ИСПРАВЛЕННЫЙ ЧАТ (ВЛОЖЕНИЯ РАБОТАЮТ) ---
+// --- ИСПРАВЛЕННЫЙ ЧАТ ---
 const ChatPopup = ({ task, currentUser, onAddComment, onClose }) => {
     const [text, setText] = useState('');
-    const [pendingFile, setPendingFile] = useState(null); // Файл, который ждет отправки
+    const [pendingFile, setPendingFile] = useState(null); 
     const chatBodyRef = useRef(null);
     const fileInputRef = useRef(null);
 
-    // Авто-скролл вниз при открытии и новых сообщениях
     useEffect(() => { 
         if (chatBodyRef.current) {
             chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight; 
         }
-    }, [task.comments, task.id]); // Добавил task.id, чтобы при переключении задач чат не тупил
+    }, [task.comments, task.id]);
     
     const handleSend = (e) => { 
         e.preventDefault(); 
-        
-        // Не отправляем, если пусто И нет файла
         if (!text.trim() && !pendingFile) return; 
-        
         const attachments = pendingFile ? [pendingFile] : [];
         onAddComment(text, attachments); 
-        
-        // Сброс формы
         setText(''); 
         setPendingFile(null);
         if(fileInputRef.current) fileInputRef.current.value = '';
@@ -50,16 +44,15 @@ const ChatPopup = ({ task, currentUser, onAddComment, onClose }) => {
         const file = e.target.files[0];
         if (!file) return;
         
-        // Лимит 8MB
-        if (file.size > 8 * 1024 * 1024) {
-            alert("Файл слишком большой! Максимум 8 МБ.");
+        // Лимит 5 MB (безопасно для base64)
+        if (file.size > 5 * 1024 * 1024) {
+            alert("Файл слишком большой! Максимум 5 МБ.");
             return;
         }
 
         const reader = new FileReader();
         reader.onload = (evt) => {
             const base64 = evt.target.result;
-            // Сохраняем во временное состояние, НЕ ОТПРАВЛЯЕМ СРАЗУ
             setPendingFile({ 
                 name: file.name, 
                 data: base64, 
@@ -107,7 +100,6 @@ const ChatPopup = ({ task, currentUser, onAddComment, onClose }) => {
                 ))}
             </div>
 
-            {/* Зона предпросмотра файла перед отправкой */}
             {pendingFile && (
                 <div style={{padding: '8px 12px', background: 'var(--bg-hover)', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem'}}>
                     <div style={{display:'flex', alignItems:'center', gap: 6, overflow:'hidden'}}>
@@ -137,21 +129,14 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
 
     const [searchQuery, setSearchQuery] = useState('');
     const [filterGroupId, setFilterGroupId] = useState('');
-    
     const [isAddingSMR, setIsAddingSMR] = useState(false);
     const [newSMR, setNewSMR] = useState({ name: '', groupId: '', volume: '', unit: 'м²' });
-    
     const [addingMTRForTask, setAddingMTRForTask] = useState(null); 
     const [newMTR, setNewMTR] = useState({ name: '', coefficient: '1', unit: 'шт' });
-    
-    // Состояния для редактирования СМР
     const [editingTask, setEditingTask] = useState(null);
     const [editTaskData, setEditTaskData] = useState({ name: '', groupId: '', volume: '', unit: '' });
-
-    // Состояния для редактирования МТР
     const [editingMaterial, setEditingMaterial] = useState(null); 
     const [editMaterialData, setEditMaterialData] = useState({ name: '', coefficient: '', unit: '' });
-    
     const [activeDatePopup, setActiveDatePopup] = useState(null);
     const [activeChatPopup, setActiveChatPopup] = useState(null);
     const canEditDates = ['admin', 'architect'].includes(currentUser.role);
@@ -166,7 +151,6 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
 
     const groupedTasks = useMemo(() => {
         const result = {};
-        // ЗАЩИТА: (groups || [])
         (groups || []).forEach(g => { result[g.id] = { name: g.name, tasks: [] }; });
         result['uncategorized'] = { name: 'Без группы', tasks: [] };
         filteredTasks.forEach(task => {
@@ -196,8 +180,9 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
     const handleRenameRoom = () => sysActions.prompt("Переименование", "Новое название:", (newName) => { if(newName !== selectedRoom.room.name) actions.renameItem('room', {buildingId: selectedRoom.buildingId, contractId: selectedRoom.contractId, floorId: selectedRoom.floorId, roomId: selectedRoom.room.id}, newName); }, selectedRoom.room.name);
     const handleSaveDates = (taskId, start, end) => { actions.updateTaskDates(selectedRoom.buildingId, selectedRoom.contractId, selectedRoom.floorId, selectedRoom.room.id, taskId, { start, end }); setActiveDatePopup(null); };
     
+    // ИСПРАВЛЕНО: Теперь используем actions.addTaskComment, чтобы пройти через App.jsx
     const handleAddComment = (taskId, text, attachments) => { 
-        socket.emit('add_task_comment', { buildingId: selectedRoom.buildingId, contractId: selectedRoom.contractId, floorId: selectedRoom.floorId, roomId: selectedRoom.room.id, taskId, text, attachments, user: currentUser });
+        actions.addTaskComment(selectedRoom.buildingId, selectedRoom.contractId, selectedRoom.floorId, selectedRoom.room.id, taskId, text, attachments);
         markAsRead(taskId); 
     };
     
@@ -205,13 +190,7 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
     const markAsRead = (taskId) => { localStorage.setItem(`read_comments_${taskId}`, new Date().toISOString()); setReadState(prev => prev + 1); };
     
     const handleOpenChat = (taskId) => { 
-        if (activeChatPopup === taskId) { 
-            setActiveChatPopup(null); 
-        } else { 
-            setActiveDatePopup(null); 
-            setActiveChatPopup(taskId); 
-            markAsRead(taskId); 
-        } 
+        if (activeChatPopup === taskId) { setActiveChatPopup(null); } else { setActiveDatePopup(null); setActiveChatPopup(taskId); markAsRead(taskId); } 
     };
 
     const safeGroupsList = Array.isArray(groups) ? groups : [];
@@ -262,11 +241,9 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
                                         {group.tasks.map(task => {
                                             const dateStr = task.end_date ? formatDate(task.end_date) : null;
                                             const hasNewMsg = hasUnreadInTask(task);
-                                            
                                             let statusColor = 'transparent';
                                             if (task.work_done && task.doc_done) statusColor = 'rgba(16, 185, 129, 0.1)'; 
                                             else if (task.work_done) statusColor = 'rgba(234, 179, 8, 0.1)'; 
-                                            
                                             const isFullyDone = task.work_done && task.doc_done;
                                             const endDateObj = task.end_date ? new Date(task.end_date) : null;
                                             if(endDateObj) endDateObj.setHours(0,0,0,0);

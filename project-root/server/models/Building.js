@@ -26,17 +26,17 @@ const BuildingSchema = new mongoose.Schema({
                     doc_done: { type: Boolean, default: false },
                     start_date: { type: Date, default: null },
                     end_date: { type: Date, default: null },
-                    updatedAt: { type: Date, default: Date.now }, // Для отслеживания изменений
+                    updatedAt: { type: Date, default: Date.now }, 
                     comments: [{
                         id: String,
                         text: String,
                         author: String,
                         role: String,
                         timestamp: { type: Date, default: Date.now },
-                        attachments: [{ // Файлы
+                        attachments: [{ 
                             name: String,
-                            data: String, // Base64 (для простоты) или URL
-                            type: String // image/png, application/pdf
+                            data: String, 
+                            type: String 
                         }]
                     }],
                     materials: [{
