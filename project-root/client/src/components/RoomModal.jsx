@@ -241,7 +241,7 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
                                                             {editingTask === task.id ? (
                                                                 <div className="inline-edit-form">
                                                                     <input className="sm-input" style={{flex:1}} value={editTaskData.name} onChange={e=>setEditTaskData({...editTaskData, name: e.target.value})}/>
-                                                                    <button className="move-btn" onClick={() => saveEditing(task.id)}>OK</button>
+                                                                    <button className="action-btn primary" style={{padding:'4px 8px'}} onClick={() => saveEditing(task.id)}>OK</button>
                                                                 </div>
                                                             ) : (
                                                                 <div style={{display:'flex', alignItems:'center', gap: 8}}>
@@ -292,7 +292,7 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
                                                                 {editingMaterial === mat.id ? (
                                                                     <div className="inline-edit-form">
                                                                         <input className="sm-input" style={{flex:1}} value={editMaterialData.name} onChange={e=>setEditMaterialData({...editMaterialData, name: e.target.value})}/>
-                                                                        <button className="move-btn" onClick={() => saveEditingMaterial(task.id, mat.id)}>OK</button>
+                                                                        <button className="action-btn primary" style={{padding:'4px 8px'}} onClick={() => saveEditingMaterial(task.id, mat.id)}>OK</button>
                                                                     </div>
                                                                 ) : (
                                                                     <div style={{display:'flex', alignItems:'center', gap: 8}}>
@@ -326,7 +326,6 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
                                                                     <form onSubmit={(e) => handleAddMTR(e, task.id)} style={{display:'flex', gap: 8, alignItems:'center', paddingLeft: 20}}>
                                                                         <span style={{fontSize:'0.8rem', fontWeight:600}}>МТР:</span>
                                                                         <input required placeholder="Название материала" className="sm-input" style={{flex:1}} value={newMTR.name} onChange={e=>setNewMTR({...newMTR, name: e.target.value})} />
-                                                                        {/* Исправление видимости label: добавлены placeholder и ширина */}
                                                                         <div style={{display:'flex', flexDirection:'column', width: 60}}>
                                                                             <span style={{fontSize:'0.6rem', color:'var(--text-muted)'}}>Коэф</span>
                                                                             <input type="number" step="0.01" placeholder="1.0" className="sm-input" style={{width:'100%'}} value={newMTR.coefficient} onChange={e=>setNewMTR({...newMTR, coefficient: e.target.value})} />
