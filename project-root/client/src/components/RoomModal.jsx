@@ -46,6 +46,9 @@ const ChatPopup = ({ task, currentUser, onAddComment, onClose }) => {
             onAddComment("📎 " + file.name, [{ name: file.name, data: base64, type: file.type }]);
         };
         reader.readAsDataURL(file);
+        
+        // ВАЖНО: Сбрасываем значение инпута, чтобы можно было отправить тот же файл еще раз
+        if(fileInputRef.current) fileInputRef.current.value = '';
     };
 
     const renderAttachment = (att) => {
@@ -204,7 +207,7 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
                     <table className="data-table">
                         <thead>
                             <tr>
-                                <th style={{width: '35%'}}>Наименование (СМР / МТР)</th>
+                                <th style={{width: '35%'}}>Наименование</th>
                                 <th style={{width: '15%'}}>Объем / Коэф.</th>
                                 <th style={{width: '15%', textAlign: 'center'}}>Инфо</th>
                                 <th style={{width: '15%', textAlign:'center'}}>СМР</th>

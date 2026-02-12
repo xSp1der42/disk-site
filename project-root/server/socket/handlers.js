@@ -39,7 +39,7 @@ module.exports = function(io, socket) {
 
     // --- Структура ---
 
-    socket.on('create_building', async ({ name, user }) => { // "Добавить объект"
+    socket.on('create_building', async ({ name, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
             const count = await Building.countDocuments();
@@ -79,7 +79,7 @@ module.exports = function(io, socket) {
         } catch(e) { console.error(e); }
     });
 
-    socket.on('add_room', async ({ buildingId, contractId, floorId, name, user }) => { // "Добавить помещение"
+    socket.on('add_room', async ({ buildingId, contractId, floorId, name, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
             const b = await Building.findOne({ id: buildingId });
@@ -115,7 +115,7 @@ module.exports = function(io, socket) {
                     start_date: null,
                     end_date: null,
                     comments: [],
-                    materials: [] // Инициализируем массив материалов
+                    materials: [] 
                 });
                 await b.save();
                 await broadcastBuildings();
@@ -170,7 +170,6 @@ module.exports = function(io, socket) {
         } catch(e) { console.error(e); }
     });
 
-    // НОВОЕ: Редактирование материала
     socket.on('edit_material', async ({ buildingId, contractId, floorId, roomId, taskId, matId, data, user }) => {
         if (!user || !canEditStructure(user.role)) return;
         try {
@@ -435,7 +434,12 @@ module.exports = function(io, socket) {
             const t = r?.tasks.find(x => x.id === taskId);
             if (t) {
                 t.comments.push({
-                    id: genId(), text, author: `${user.surname} ${user.name}`, role: user.role, timestamp: new Date(), attachments: attachments || []
+                    id: genId(), 
+                    text, 
+                    author: `${user.surname} ${user.name}`, 
+                    role: user.role, 
+                    timestamp: new Date(), 
+                    attachments: attachments || []
                 });
                 await b.save();
                 broadcastBuildings();
