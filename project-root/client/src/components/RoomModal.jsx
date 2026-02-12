@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Pencil, Trash2, Layers, Hammer, FileText, PlusCircle, Calendar, MessageSquare, Clock, Send, X, Search, Plus, Paperclip, File as FileIcon } from 'lucide-react';
+import { Pencil, Trash2, Layers, Hammer, FileText, PlusCircle, Calendar, MessageSquare, Clock, Send, X, Search, Plus, Paperclip, File as FileIcon, Check } from 'lucide-react';
 import socket from '../utils/socket';
 import { hasUnreadInTask } from '../utils/helpers';
 
@@ -17,39 +17,62 @@ const DatePickerPopup = ({ task, onSave, onClose }) => {
     );
 };
 
+// --- ИСПРАВЛЕННЫЙ ЧАТ (ВЛОЖЕНИЯ РАБОТАЮТ) ---
 const ChatPopup = ({ task, currentUser, onAddComment, onClose }) => {
     const [text, setText] = useState('');
+    const [pendingFile, setPendingFile] = useState(null); // Файл, который ждет отправки
     const chatBodyRef = useRef(null);
     const fileInputRef = useRef(null);
 
-    useEffect(() => { if (chatBodyRef.current) chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight; }, [task.comments]);
+    // Авто-скролл вниз при открытии и новых сообщениях
+    useEffect(() => { 
+        if (chatBodyRef.current) {
+            chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight; 
+        }
+    }, [task.comments, task.id]); // Добавил task.id, чтобы при переключении задач чат не тупил
     
     const handleSend = (e) => { 
         e.preventDefault(); 
-        if (!text.trim()) return; 
-        onAddComment(text, []); 
+        
+        // Не отправляем, если пусто И нет файла
+        if (!text.trim() && !pendingFile) return; 
+        
+        const attachments = pendingFile ? [pendingFile] : [];
+        onAddComment(text, attachments); 
+        
+        // Сброс формы
         setText(''); 
+        setPendingFile(null);
+        if(fileInputRef.current) fileInputRef.current.value = '';
     };
 
     const handleFileSelect = (e) => {
         const file = e.target.files[0];
         if (!file) return;
         
+        // Лимит 8MB
         if (file.size > 8 * 1024 * 1024) {
-            alert("Файл слишком большой (макс 8МБ)");
+            alert("Файл слишком большой! Максимум 8 МБ.");
             return;
         }
 
         const reader = new FileReader();
         reader.onload = (evt) => {
             const base64 = evt.target.result;
-            onAddComment("📎 " + file.name, [{ name: file.name, data: base64, type: file.type }]);
+            // Сохраняем во временное состояние, НЕ ОТПРАВЛЯЕМ СРАЗУ
+            setPendingFile({ 
+                name: file.name, 
+                data: base64, 
+                type: file.type 
+            });
         };
         reader.readAsDataURL(file);
-        
-        // ВАЖНО: Сбрасываем значение инпута, чтобы можно было отправить тот же файл еще раз
-        if(fileInputRef.current) fileInputRef.current.value = '';
     };
+
+    const removePendingFile = () => {
+        setPendingFile(null);
+        if(fileInputRef.current) fileInputRef.current.value = '';
+    }
 
     const renderAttachment = (att) => {
         if (att.type.startsWith('image/')) {
@@ -68,27 +91,40 @@ const ChatPopup = ({ task, currentUser, onAddComment, onClose }) => {
     };
 
     return (
-        <div style={{ position: 'absolute', top: '100%', right: -50, zIndex: 100, background: 'var(--bg-card)', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-lg)', borderRadius: 12, width: 320, height: 400, display: 'flex', flexDirection: 'column', marginTop: 8 }} onClick={e => e.stopPropagation()}>
+        <div style={{ position: 'absolute', top: '100%', right: -50, zIndex: 100, background: 'var(--bg-card)', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-lg)', borderRadius: 12, width: 320, height: 450, display: 'flex', flexDirection: 'column', marginTop: 8 }} onClick={e => e.stopPropagation()}>
             <div style={{padding: '12px 16px', borderBottom: '1px solid var(--border-color)', display:'flex', justifyContent:'space-between', alignItems:'center'}}><span style={{fontWeight:600}}>Комментарии</span><button onClick={onClose} style={{background:'none', border:'none', cursor:'pointer'}}><X size={16}/></button></div>
+            
             <div ref={chatBodyRef} style={{flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--bg-body)'}}>
                 {(!task.comments || task.comments.length === 0) && <div style={{textAlign:'center', color:'var(--text-muted)', fontSize:'0.85rem', marginTop: 20}}>Нет комментариев.</div>}
                 {task.comments?.map(c => (
                     <div key={c.id} style={{ alignSelf: (c.author.includes(currentUser.surname) || c.role === currentUser.role) ? 'flex-end' : 'flex-start', maxWidth: '85%', background: (c.author.includes(currentUser.surname) || c.role === currentUser.role) ? 'var(--accent-primary)' : 'var(--bg-card)', color: (c.author.includes(currentUser.surname) || c.role === currentUser.role) ? 'white' : 'var(--text-main)', padding: '8px 12px', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-color)' }}>
                         <div style={{fontSize:'0.7rem', fontWeight:700, opacity: 0.8, marginBottom: 2}}>{c.author}</div>
-                        <div style={{fontSize:'0.9rem'}}>{c.text}</div>
+                        <div style={{fontSize:'0.9rem', wordBreak: 'break-word'}}>{c.text}</div>
                         {c.attachments && c.attachments.map((att, i) => (
                             <div key={i}>{renderAttachment(att)}</div>
                         ))}
                     </div>
                 ))}
             </div>
+
+            {/* Зона предпросмотра файла перед отправкой */}
+            {pendingFile && (
+                <div style={{padding: '8px 12px', background: 'var(--bg-hover)', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem'}}>
+                    <div style={{display:'flex', alignItems:'center', gap: 6, overflow:'hidden'}}>
+                        <Paperclip size={14}/>
+                        <span style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth: 200}}>{pendingFile.name}</span>
+                    </div>
+                    <button onClick={removePendingFile} style={{border:'none', background:'transparent', cursor:'pointer', color:'#ef4444'}}><X size={14}/></button>
+                </div>
+            )}
+
             <form onSubmit={handleSend} style={{padding: 12, borderTop: '1px solid var(--border-color)', display:'flex', gap: 8, background: 'var(--bg-card)', alignItems: 'center'}}>
-                <label style={{cursor:'pointer', color:'var(--text-muted)', padding: 4}} title="Прикрепить файл">
+                <label style={{cursor:'pointer', color: pendingFile ? 'var(--accent-primary)' : 'var(--text-muted)', padding: 4}} title="Прикрепить файл">
                     <Paperclip size={20}/>
                     <input type="file" style={{display:'none'}} ref={fileInputRef} onChange={handleFileSelect}/>
                 </label>
                 <input className="sm-input" style={{flex:1}} placeholder="Написать..." value={text} onChange={e => setText(e.target.value)} />
-                <button type="submit" className="action-btn primary" style={{padding: '0 12px'}} disabled={!text.trim()}><Send size={16}/></button>
+                <button type="submit" className="action-btn primary" style={{padding: '0 12px'}} disabled={!text.trim() && !pendingFile}><Send size={16}/></button>
             </form>
         </div>
     );
@@ -108,9 +144,11 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
     const [addingMTRForTask, setAddingMTRForTask] = useState(null); 
     const [newMTR, setNewMTR] = useState({ name: '', coefficient: '1', unit: 'шт' });
     
+    // Состояния для редактирования СМР
     const [editingTask, setEditingTask] = useState(null);
     const [editTaskData, setEditTaskData] = useState({ name: '', groupId: '', volume: '', unit: '' });
 
+    // Состояния для редактирования МТР
     const [editingMaterial, setEditingMaterial] = useState(null); 
     const [editMaterialData, setEditMaterialData] = useState({ name: '', coefficient: '', unit: '' });
     
