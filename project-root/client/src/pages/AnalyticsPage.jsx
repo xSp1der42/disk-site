@@ -10,14 +10,15 @@ const AnalyticsPage = ({ buildings, user }) => {
     const navigate = useNavigate();
     const [chartType, setChartType] = useState('pie'); 
 
-    // БЕЗОПАСНАЯ ПАЛИТРА ДЛЯ ГРАФИКОВ (чтобы не крашилось при большом кол-ве объектов)
     const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
     const analyticsData = useMemo(() => {
         let totalStats = { total: 0, work: 0, doc: 0, vol: 0 };
         
-        // Безопасный проход по массиву (если buildings undefined)
-        const buildingStats = (buildings || []).map(b => {
+        // ЗАЩИТА: (buildings || [])
+        const safeBuildings = Array.isArray(buildings) ? buildings : [];
+
+        const buildingStats = safeBuildings.map(b => {
             let bTotal = 0, bWork = 0, bDoc = 0;
             if (b.contracts) {
                 b.contracts.forEach(c => {
@@ -64,7 +65,6 @@ const AnalyticsPage = ({ buildings, user }) => {
         return { totalStats, buildingStats, pieData };
     }, [buildings]);
 
-    // Цвета для Pie Chart (Всего / Сделано)
     const PIE_COLORS = ['#10b981', '#94a3b8']; 
 
     const handleGlobalExport = () => {
@@ -77,6 +77,8 @@ const AnalyticsPage = ({ buildings, user }) => {
     const totalPercent = analyticsData.totalStats.total 
         ? Math.round((analyticsData.totalStats.work / analyticsData.totalStats.total) * 100) 
         : 0;
+        
+    const safeBuildingsList = Array.isArray(buildings) ? buildings : [];
 
     return (
         <div style={{height: '100%', display: 'flex', flexDirection: 'column'}}>
@@ -100,7 +102,7 @@ const AnalyticsPage = ({ buildings, user }) => {
                             <div style={{background: 'var(--bg-active)', padding: 10, borderRadius: 10}}><Building2 size={24} color="var(--accent-primary)"/></div>
                             <span style={{fontSize:'0.9rem', color:'var(--text-muted)', fontWeight:600}}>Объектов в работе</span>
                         </div>
-                        <div style={{fontSize: '2rem', fontWeight: 800, color: 'var(--text-main)'}}>{buildings.length}</div>
+                        <div style={{fontSize: '2rem', fontWeight: 800, color: 'var(--text-main)'}}>{safeBuildingsList.length}</div>
                     </div>
                     
                     <div className="project-card" style={{padding: 24}}>
@@ -228,7 +230,7 @@ const AnalyticsPage = ({ buildings, user }) => {
                                     </td>
                                 </tr>
                             ))}
-                            {buildings.length === 0 && <tr><td colSpan="4" style={{textAlign:'center', padding:20}}>Нет данных</td></tr>}
+                            {safeBuildingsList.length === 0 && <tr><td colSpan="4" style={{textAlign:'center', padding:20}}>Нет данных</td></tr>}
                         </tbody>
                     </table>
                 </div>

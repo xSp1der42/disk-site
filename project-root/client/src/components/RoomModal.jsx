@@ -108,12 +108,10 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
     const [addingMTRForTask, setAddingMTRForTask] = useState(null); 
     const [newMTR, setNewMTR] = useState({ name: '', coefficient: '1', unit: 'шт' });
     
-    // Состояния для редактирования СМР
     const [editingTask, setEditingTask] = useState(null);
     const [editTaskData, setEditTaskData] = useState({ name: '', groupId: '', volume: '', unit: '' });
 
-    // Состояния для редактирования МТР
-    const [editingMaterial, setEditingMaterial] = useState(null); // ID материала
+    const [editingMaterial, setEditingMaterial] = useState(null); 
     const [editMaterialData, setEditMaterialData] = useState({ name: '', coefficient: '', unit: '' });
     
     const [activeDatePopup, setActiveDatePopup] = useState(null);
@@ -130,11 +128,13 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
 
     const groupedTasks = useMemo(() => {
         const result = {};
-        groups.forEach(g => { result[g.id] = { name: g.name, tasks: [] }; });
+        // ЗАЩИТА: (groups || [])
+        (groups || []).forEach(g => { result[g.id] = { name: g.name, tasks: [] }; });
         result['uncategorized'] = { name: 'Без группы', tasks: [] };
         filteredTasks.forEach(task => {
             const gid = task.groupId && result[task.groupId] ? task.groupId : 'uncategorized';
-            result[gid].tasks.push(task);
+            if (result[gid]) result[gid].tasks.push(task);
+            else result['uncategorized'].tasks.push(task);
         });
         return result;
     }, [filteredTasks, groups]);
@@ -144,11 +144,9 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
     const handleAddMTR = (e, taskId) => { e.preventDefault(); socket.emit('add_material', { buildingId: selectedRoom.buildingId, contractId: selectedRoom.contractId, floorId: selectedRoom.floorId, roomId: selectedRoom.room.id, taskId: taskId, matName: newMTR.name, coefficient: newMTR.coefficient, unit: newMTR.unit, user: currentUser }); setAddingMTRForTask(null); setNewMTR({ name: '', coefficient: '1', unit: 'шт' }); };
     const handleDeleteMTR = (taskId, matId) => { socket.emit('delete_material', { buildingId: selectedRoom.buildingId, contractId: selectedRoom.contractId, floorId: selectedRoom.floorId, roomId: selectedRoom.room.id, taskId, matId, user: currentUser }); };
 
-    // Редактирование СМР
     const startEditing = (task) => { setEditingTask(task.id); setEditTaskData({ name: task.name, groupId: task.groupId || '', volume: task.volume, unit: task.unit || '' }); };
     const saveEditing = (taskId) => { actions.editTask(selectedRoom.buildingId, selectedRoom.contractId, selectedRoom.floorId, selectedRoom.room.id, taskId, editTaskData); setEditingTask(null); };
     
-    // Редактирование МТР
     const startEditingMaterial = (mat) => { setEditingMaterial(mat.id); setEditMaterialData({ name: mat.name, coefficient: mat.coefficient, unit: mat.unit }); };
     const saveEditingMaterial = (taskId, matId) => { 
         socket.emit('edit_material', { buildingId: selectedRoom.buildingId, contractId: selectedRoom.contractId, floorId: selectedRoom.floorId, roomId: selectedRoom.room.id, taskId, matId, data: editMaterialData, user: currentUser }); 
@@ -178,6 +176,8 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
         } 
     };
 
+    const safeGroupsList = Array.isArray(groups) ? groups : [];
+
     return (
         <div className="modal-backdrop" onClick={() => setSelectedRoom(null)}>
             <div className="modal-window" onClick={e => { e.stopPropagation(); setActiveDatePopup(null); setActiveChatPopup(null); }}>
@@ -195,7 +195,7 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
                              <Layers size={16} style={{marginRight: 8, color: 'var(--text-muted)'}} />
                              <select className="filter-select" value={filterGroupId} onChange={e => setFilterGroupId(e.target.value)}>
                                 <option value="">Все работы</option>
-                                {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                                {safeGroupsList.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                                 <option value="uncategorized">Без группы</option>
                             </select>
                         </div>
@@ -207,7 +207,7 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
                     <table className="data-table">
                         <thead>
                             <tr>
-                                <th style={{width: '35%'}}>Наименование</th>
+                                <th style={{width: '35%'}}>Наименование (СМР / МТР)</th>
                                 <th style={{width: '15%'}}>Объем / Коэф.</th>
                                 <th style={{width: '15%', textAlign: 'center'}}>Инфо</th>
                                 <th style={{width: '15%', textAlign:'center'}}>СМР</th>
@@ -373,7 +373,7 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
                                 <div style={{display:'flex', gap: 10, width:'100%', alignItems: 'center'}}>
                                     <select required value={newSMR.groupId} onChange={e => setNewSMR({...newSMR, groupId: e.target.value})} style={{width: 180}}>
                                         <option value="">Выберите группу...</option>
-                                        {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                                        {safeGroupsList.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                                         <option value="uncategorized">Без группы</option>
                                     </select>
                                     <input required placeholder="Название работы" value={newSMR.name} onChange={e => setNewSMR({...newSMR, name: e.target.value})} style={{flex:1}} />

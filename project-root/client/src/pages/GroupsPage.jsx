@@ -5,7 +5,6 @@ import socket from '../utils/socket';
 
 const GroupsPage = ({ user, groups, actions, buildings, setSelectedRoom, filterGroupId, setFilterGroupId, sysActions }) => {
     
-    // Состояние для поиска
     const [searchQuery, setSearchQuery] = useState('');
 
     const handleCreateGroup = () => {
@@ -24,12 +23,15 @@ const GroupsPage = ({ user, groups, actions, buildings, setSelectedRoom, filterG
         socket.emit('move_group', { groupId, direction, user });
     };
 
-    // Фильтрация групп по поиску
-    const filteredGroups = groups.filter(g => 
+    // ЗАЩИТА: (groups || [])
+    const safeGroups = Array.isArray(groups) ? groups : [];
+
+    const filteredGroups = safeGroups.filter(g => 
         g.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     const showSystemGroup = 'без группы'.includes(searchQuery.toLowerCase());
+    const safeBuildings = Array.isArray(buildings) ? buildings : [];
 
     return (
         <div style={{height: '100%', display:'flex', flexDirection:'column'}}>
@@ -39,7 +41,6 @@ const GroupsPage = ({ user, groups, actions, buildings, setSelectedRoom, filterG
                     <div className="control-value">Группы работ и Сводка</div>
                 </div>
                 
-                {/* ВОССТАНОВЛЕННЫЕ ФИЛЬТРЫ */}
                 <div className="control-actions">
                      <div className="filter-dropdown-container">
                         <Filter size={16} style={{marginRight: 8, color: 'var(--text-muted)'}} />
@@ -49,7 +50,7 @@ const GroupsPage = ({ user, groups, actions, buildings, setSelectedRoom, filterG
                             onChange={e => setFilterGroupId(e.target.value)}
                         >
                             <option value="">Все работы (Общий статус)</option>
-                            {groups.map(g => (
+                            {safeGroups.map(g => (
                                 <option key={g.id} value={g.id}>{g.name}</option>
                             ))}
                             <option value="uncategorized">Без группы</option>
@@ -60,7 +61,7 @@ const GroupsPage = ({ user, groups, actions, buildings, setSelectedRoom, filterG
 
             <div className="content-area" style={{padding:0}}>
                 <div className="split-layout">
-                    {/* LEFT PANEL: GROUPS MANAGEMENT (Admin only) */}
+                    {/* LEFT PANEL */}
                     <div className="panel-left" style={{padding: '24px', background: 'var(--bg-card)'}}>
                         <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 20}}>
                             <h3 style={{margin:0, fontSize:'1.1rem'}}>Группы работ</h3>
@@ -69,7 +70,6 @@ const GroupsPage = ({ user, groups, actions, buildings, setSelectedRoom, filterG
                             </button>
                         </div>
 
-                        {/* Поисковая строка для групп */}
                         <div style={{position: 'relative', marginBottom: 16}}>
                             <Search size={16} style={{position:'absolute', left:10, top: 10, color:'var(--text-muted)'}}/>
                             <input 
@@ -111,14 +111,14 @@ const GroupsPage = ({ user, groups, actions, buildings, setSelectedRoom, filterG
                                                 <div className="move-btn-group">
                                                     <button 
                                                         className="move-btn" 
-                                                        disabled={groups.findIndex(x => x.id === g.id) === 0} 
+                                                        disabled={safeGroups.findIndex(x => x.id === g.id) === 0} 
                                                         onClick={() => handleMoveGroup(g.id, 'up')}
                                                     >
                                                         <ChevronUp size={16}/>
                                                     </button>
                                                     <button 
                                                         className="move-btn" 
-                                                        disabled={groups.findIndex(x => x.id === g.id) === groups.length - 1} 
+                                                        disabled={safeGroups.findIndex(x => x.id === g.id) === safeGroups.length - 1} 
                                                         onClick={() => handleMoveGroup(g.id, 'down')}
                                                     >
                                                         <ChevronDown size={16}/>
@@ -136,22 +136,22 @@ const GroupsPage = ({ user, groups, actions, buildings, setSelectedRoom, filterG
                         </div>
                     </div>
 
-                    {/* RIGHT PANEL: TREE VIEW */}
+                    {/* RIGHT PANEL */}
                     <div className="panel-right" style={{padding: '24px'}}>
                          <h3 style={{margin:'0 0 16px 0', fontSize:'1.1rem'}}>Сводка по объектам</h3>
                          <div className="tree-container">
-                            {buildings.map(b => (
+                            {safeBuildings.map(b => (
                                 <div key={b.id} className="tree-building">
                                     <div className="tree-building-header">
                                         <Building2 size={20} color="var(--accent-primary)"/>
                                         {b.name}
                                     </div>
                                     <div className="tree-floors">
-                                        {b.floors.map(f => (
+                                        {(b.floors || []).map(f => (
                                             <div key={f.id} className="tree-floor-row">
                                                 <div className="tree-floor-title">{f.name}</div>
                                                 <div className="tree-rooms-list">
-                                                    {f.rooms.map(r => (
+                                                    {(f.rooms || []).map(r => (
                                                         <div 
                                                             key={r.id} 
                                                             className={`tree-room-badge ${getRoomStatus(r, filterGroupId)}`}
@@ -160,15 +160,15 @@ const GroupsPage = ({ user, groups, actions, buildings, setSelectedRoom, filterG
                                                             {r.name}
                                                         </div>
                                                     ))}
-                                                    {f.rooms.length === 0 && <span style={{fontSize:'0.8rem', color:'var(--text-light)'}}>Пусто</span>}
+                                                    {(f.rooms || []).length === 0 && <span style={{fontSize:'0.8rem', color:'var(--text-light)'}}>Пусто</span>}
                                                 </div>
                                             </div>
                                         ))}
-                                        {b.floors.length === 0 && <div style={{padding:10, color:'var(--text-muted)'}}>Нет этажей</div>}
+                                        {(b.floors || []).length === 0 && <div style={{padding:10, color:'var(--text-muted)'}}>Нет этажей</div>}
                                     </div>
                                 </div>
                             ))}
-                            {buildings.length === 0 && <div style={{textAlign:'center', marginTop: 40, color:'var(--text-muted)'}}>Нет объектов</div>}
+                            {safeBuildings.length === 0 && <div style={{textAlign:'center', marginTop: 40, color:'var(--text-muted)'}}>Нет объектов</div>}
                         </div>
                     </div>
                 </div>

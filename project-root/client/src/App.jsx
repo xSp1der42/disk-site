@@ -11,8 +11,8 @@ import RoomModal from './components/RoomModal';
 
 // Страницы
 import DashboardIndex from './pages/DashboardIndex';
-import BuildingPage from './pages/BuildingPage'; // Теперь это список Договоров
-import ContractPage from './pages/ContractPage'; // НОВАЯ СТРАНИЦА: Этажи и Помещения
+import BuildingPage from './pages/BuildingPage';
+import ContractPage from './pages/ContractPage';
 import GroupsPage from './pages/GroupsPage';
 import UsersPage from './pages/UsersPage';
 import LogsPage from './pages/LogsPage';
@@ -45,9 +45,12 @@ const ProtectedLayout = ({ user, buildings, logout, theme, toggleTheme, selected
 function App() {
   const [user, setUser] = useState(null); 
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+  
+  // ВАЖНО: Инициализация пустыми массивами
   const [buildings, setBuildings] = useState([]);
   const [groups, setGroups] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
+  
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [loginInput, setLoginInput] = useState({ username: '', password: '' });
   const [modalConfig, setModalConfig] = useState(null);
@@ -82,8 +85,10 @@ function App() {
 
   useEffect(() => {
     socket.on('init_data', (data) => {
-      // Глубокая сортировка: Объекты -> Договоры -> Этажи -> Помещения
-      const sorted = data.map(b => ({
+      // ЗАЩИТА: Если data придет null, используем пустой массив
+      const safeData = Array.isArray(data) ? data : [];
+      
+      const sorted = safeData.map(b => ({
           ...b,
           contracts: (b.contracts || []).sort((a,b) => (a.order||0) - (b.order||0)).map(c => ({
               ...c,
@@ -95,7 +100,6 @@ function App() {
       }));
       setBuildings(sorted);
       
-      // Обновление выбранной комнаты (live update)
       if (selectedRoom) {
         const b = sorted.find(b => b.id === selectedRoom.buildingId);
         const c = b?.contracts.find(c => c.id === selectedRoom.contractId);
@@ -105,7 +109,10 @@ function App() {
       }
     });
 
-    socket.on('init_groups', (data) => setGroups(data));
+    // ЗАЩИТА ГРУПП
+    socket.on('init_groups', (data) => {
+        setGroups(Array.isArray(data) ? data : []);
+    });
 
     socket.on('login_success', (userData) => {
         setUser(userData);
@@ -117,7 +124,7 @@ function App() {
 
     socket.on('login_error', (msg) => sysActions.alert("Ошибка входа", msg));
     socket.on('user_saved', () => { sysActions.alert("Успешно", "Данные сотрудника сохранены!"); socket.emit('get_users_list', { user }); });
-    socket.on('users_list_update', (list) => setAllUsers(list));
+    socket.on('users_list_update', (list) => setAllUsers(list || []));
     socket.on('operation_error', (msg) => sysActions.alert("Ошибка", msg));
 
     return () => {
@@ -146,7 +153,7 @@ function App() {
           emitAction('reorder_item', { type, buildingId, contractId, floorId, sourceIndex, destinationIndex });
       },
       
-      moveItem: (type, direction, ids) => emitAction('move_item', { type, direction, ids }), // Для объектов и договоров
+      moveItem: (type, direction, ids) => emitAction('move_item', { type, direction, ids }),
       renameItem: (type, ids, newName) => emitAction('rename_item', { type, ids, newName }),
       copyItem: (type, ids) => emitAction('copy_item', { type, ids }),
       
