@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FileText, ArrowLeft, PlusCircle, Pencil, Trash2, PieChart, Copy, GripVertical, Move, Filter, X, BarChart } from 'lucide-react';
+import { FileText, ArrowLeft, PlusCircle, Pencil, Trash2, PieChart, Copy, GripVertical, Move, Filter, X, BarChart, Download } from 'lucide-react';
 import { getRoomStatus, hasUnreadInRoom } from '../utils/helpers';
 
 const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysActions }) => {
@@ -61,6 +61,14 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysAc
         actions.reorderItem(type, building.id, contract.id, targetParentId, draggedItem.index, targetIndex); setDraggedItem(null);
     };
 
+    // ФУНКЦИЯ ЭКСПОРТА
+    const handleExport = () => {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+        const uName = user?.username || 'User';
+        const uRole = user?.role || 'user';
+        window.open(`${apiUrl}/api/export/${building.id}?username=${uName}&role=${uRole}`, '_blank');
+    };
+
     return (
         <>
             <div className="control-bar">
@@ -78,6 +86,12 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysAc
                         </select>
                         {filterGroupId && <button className="icon-btn-danger" onClick={() => setFilterGroupId('')}><X size={14}/></button>}
                     </div>
+                    
+                    {/* КНОПКА ЭКСПОРТА ВЕРНУЛАСЬ */}
+                    <button className="action-btn secondary" onClick={handleExport} title="Скачать Excel по этому объекту">
+                        <Download size={18} /> Отчет
+                    </button>
+
                     <button className="action-btn secondary" onClick={() => navigate(`/dashboard/${building.id}`)}><ArrowLeft size={16} /> Назад</button>
                     {hasEditRights && <><button className={`action-btn ${isReorderingMode ? 'primary' : 'secondary'}`} onClick={() => setIsReorderingMode(!isReorderingMode)}><Move size={18}/></button><button className="action-btn primary" onClick={handleAddFloor}><PlusCircle size={18}/> Добавить этаж</button></>}
                 </div>
