@@ -5,7 +5,8 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const ExcelJS = require('exceljs');
-const path = require('path'); // <--- ВАЖНО
+const path = require('path'); // <--- ОБЯЗАТЕЛЬНО
+const fs = require('fs'); // Для проверки существования папки
 const Log = require('./models/Log');
 
 // Импорт моделей и обработчиков
@@ -53,7 +54,7 @@ const io = new Server(server, {
 });
 
 // ==========================================
-// 1. API ROUTES (Обязательно ПЕРЕД статикой)
+// 1. API ROUTES
 // ==========================================
 
 // ГЛОБАЛЬНЫЙ ЭКСПОРТ
@@ -255,27 +256,34 @@ cleanOldLogs();
 setInterval(cleanOldLogs, 24 * 60 * 60 * 1000);
 
 // =========================================================
-// 2. РАЗДАЧА ФРОНТЕНДА (Фикс 404 при обновлении страницы)
+// 2. РАЗДАЧА ФРОНТЕНДА (React SPA Fix)
 // =========================================================
 
-// Определяем путь к папке сборки клиента
-// Предполагается, что структура: /repo/client/dist и /repo/server/index.js
-// Или /repo/server/index.js и /repo/client/dist
-const clientDistPath = path.resolve(__dirname, '../client/dist');
-console.log(`[System] Serving static files from: ${clientDistPath}`);
+// Вычисляем правильный путь.
+// __dirname — это папка, где лежит этот файл (server).
+// Нам нужно выйти на уровень вверх (..) и зайти в client/dist.
+const clientDistPath = path.join(__dirname, '../client/dist');
+const indexPath = path.join(clientDistPath, 'index.html');
 
-// 1. Сначала отдаем статические файлы (JS, CSS, картинки)
+console.log(`[System] Путь к статике (dist): ${clientDistPath}`);
+console.log(`[System] Путь к index.html: ${indexPath}`);
+
+// Проверка: существует ли папка. Если нет — Render не собрал фронтенд.
+if (!fs.existsSync(clientDistPath)) {
+    console.error(`[CRITICAL ERROR] Папка ${clientDistPath} НЕ НАЙДЕНА!`);
+    console.error(`Выполните команду сборки на Render: "cd client && npm install && npm run build && cd ../server && npm install"`);
+}
+
+// 1. Отдаем статику (JS, CSS, картинки)
 app.use(express.static(clientDistPath));
 
-// 2. Catch-All Route: Все остальные запросы (dashboard, users и т.д.) перенаправляем на index.html
-// Это позволяет React Router обработать маршрут на клиенте
+// 2. ГЛАВНЫЙ ФИКС: Любой запрос, который не API и не статика -> отдаем index.html
 app.get('*', (req, res) => {
-    res.sendFile(path.join(clientDistPath, 'index.html'), (err) => {
-        if (err) {
-            console.error("[Server] Error sending index.html:", err);
-            res.status(500).send("Server Error: Client build not found. Did you run 'npm run build'?");
-        }
-    });
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(500).send('Ошибка сервера: Файл index.html не найден. Проверьте сборку фронтенда.');
+    }
 });
 
 const PORT = process.env.PORT || 3001;
