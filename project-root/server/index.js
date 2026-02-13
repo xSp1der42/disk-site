@@ -5,6 +5,7 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const ExcelJS = require('exceljs');
+const path = require('path'); // <--- ОБЯЗАТЕЛЬНО
 const Log = require('./models/Log');
 
 // Импорт моделей и обработчиков
@@ -45,14 +46,14 @@ const app = express();
 app.use(cors());
 const server = http.createServer(app);
 
-// ВАЖНО: 50MB лимит
+// ВАЖНО: 50MB лимит для вложений
 const io = new Server(server, {
     cors: { origin: "*", methods: ["GET", "POST"] },
     maxHttpBufferSize: 5e7 
 });
 
 // ==========================================
-// 1. ГЛОБАЛЬНЫЙ ЭКСПОРТ (ИСПРАВЛЕНО)
+// 1. ГЛОБАЛЬНЫЙ ЭКСПОРТ
 // ==========================================
 app.get('/api/export/global', async (req, res) => {
     try {
@@ -80,7 +81,7 @@ app.get('/api/export/global', async (req, res) => {
         const detailSheet = workbook.addWorksheet('Полная детализация');
         detailSheet.columns = [
             { header: 'Объект', key: 'b_name', width: 20 },
-            { header: 'Договор', key: 'c_name', width: 20 }, // Добавили договор
+            { header: 'Договор', key: 'c_name', width: 20 },
             { header: 'Этаж', key: 'floor', width: 10 },
             { header: 'Помещение', key: 'room', width: 20 },
             { header: 'Работа', key: 'task', width: 40 },
@@ -150,7 +151,7 @@ app.get('/api/export/global', async (req, res) => {
 });
 
 // ==========================================
-// 2. ЭКСПОРТ КОНКРЕТНОГО ДОМА (ИСПРАВЛЕНО)
+// 2. ЭКСПОРТ КОНКРЕТНОГО ДОМА
 // ==========================================
 app.get('/api/export/:buildingId', async (req, res) => {
     try {
@@ -165,7 +166,7 @@ app.get('/api/export/:buildingId', async (req, res) => {
         const worksheet = workbook.addWorksheet('Отчет');
 
         worksheet.columns = [
-            { header: 'Договор', key: 'contract', width: 20 }, // Добавлено
+            { header: 'Договор', key: 'contract', width: 20 },
             { header: 'Этаж', key: 'floor', width: 15 },
             { header: 'Помещение', key: 'room', width: 20 },
             { header: 'Работа', key: 'task', width: 45 },
@@ -253,6 +254,20 @@ io.on('connection', async (socket) => {
 
 cleanOldLogs();
 setInterval(cleanOldLogs, 24 * 60 * 60 * 1000);
+
+// =========================================================
+//  ВАЖНО: РАЗДАЧА ФРОНТЕНДА (Фикс 404 и белого экрана)
+// =========================================================
+
+// Указываем путь к папке dist в клиенте: "выйти назад (..) -> client -> dist"
+const clientDistPath = path.join(__dirname, '../client/dist');
+
+app.use(express.static(clientDistPath));
+
+// "Catch-All" обработчик для React Router
+app.get('*', (req, res) => {
+    res.sendFile(path.join(clientDistPath, 'index.html'));
+});
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
