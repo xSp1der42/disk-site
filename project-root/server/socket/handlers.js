@@ -464,6 +464,21 @@ module.exports = function(io, socket) {
         } catch (e) { console.error(e); }
     });
 
+    // === НОВАЯ ФУНКЦИЯ: УДАЛЕНИЕ ЛОГОВ ===
+    socket.on('clear_logs', async ({ user }) => {
+        if (!user || user.role !== 'admin') return;
+        try {
+            await Log.deleteMany({});
+            createLog(io, user.username, user.role, 'Система', 'Полная очистка журнала событий');
+            
+            // Сразу обновляем список у клиента
+            const logs = await Log.find().sort({ timestamp: -1 }).limit(50);
+            const total = await Log.countDocuments();
+            socket.emit('logs_data', { logs, total });
+        } catch (e) { console.error(e); }
+    });
+    // ======================================
+
     socket.on('get_users_list', async ({ user }) => {
         if (!user || user.role !== 'admin') return;
         const users = await User.find({}, '-password'); 
