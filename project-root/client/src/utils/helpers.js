@@ -1,4 +1,10 @@
-// Логика статусов (По требованию: "галочек нет" -> красный, "в процессе" -> желтый, "все ок" -> зеленый)
+// Логика статусов (Новая схема)
+// Красный - работы не начаты (0%)
+// Желтый - работы начаты частично
+// Оранжевый - ИД или СМР полностью выполнена (одна из колонок 100%)
+// Зеленый - ИД и СМР выполнены (обе колонки 100%)
+// Серая - нету работ
+
 export const getRoomStatus = (room, filterGroupId) => {
     let filteredTasks = room.tasks || [];
     
@@ -10,31 +16,41 @@ export const getRoomStatus = (room, filterGroupId) => {
         });
     }
 
+    // Серая: Нет работ
     if (filteredTasks.length === 0) return 'status-none';
 
-    let isFullyCompleted = true; // Считаем, что все ок
-    let isStarted = false;       // Начато ли?
+    const totalTasks = filteredTasks.length;
+    let smrDoneCount = 0;
+    let docDoneCount = 0;
+    let isStarted = false; // Начато ли хоть что-то
 
     filteredTasks.forEach(t => {
-        // Условие полного выполнения: И СМР (work_done), И ИД (doc_done) должны быть true
-        if (!t.work_done || !t.doc_done) {
-            isFullyCompleted = false;
-        }
-
-        // Условие "В работе": Хоть одна галочка стоит
-        // ИЗМЕНЕНИЕ: Наличие материалов не считается началом работы (пункт 9)
+        if (t.work_done) smrDoneCount++;
+        if (t.doc_done) docDoneCount++;
+        
+        // Если стоит хоть одна галочка (СМР или ИД), считаем работу начатой
         if (t.work_done || t.doc_done) {
             isStarted = true;
         }
     });
 
-    // 1. Зеленый: ВСЁ (2/2) по всем задачам готово
-    if (isFullyCompleted) return 'status-green';
+    // 1. Зеленый: И СМР, И ИД выполнены полностью (100% / 100%)
+    if (smrDoneCount === totalTasks && docDoneCount === totalTasks) {
+        return 'status-green';
+    }
 
-    // 2. Желтый: Что-то начато, но не закончено полностью
-    if (isStarted) return 'status-yellow';
+    // 2. Оранжевый: Либо СМР полностью (100%), Либо ИД полностью (100%)
+    // (Попадает сюда только если не сработало условие Зеленого)
+    if (smrDoneCount === totalTasks || docDoneCount === totalTasks) {
+        return 'status-orange';
+    }
 
-    // 3. Красный: Ничего не тронуто
+    // 3. Желтый: Работы начаты частично (есть прогресс, но нет полных столбцов)
+    if (isStarted) {
+        return 'status-yellow';
+    }
+
+    // 4. Красный: Работы не начаты (0%)
     return 'status-red';
 };
 
