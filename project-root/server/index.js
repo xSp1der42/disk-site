@@ -5,7 +5,7 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const ExcelJS = require('exceljs');
-const path = require('path'); // <--- ОБЯЗАТЕЛЬНО
+const path = require('path'); // <--- ВАЖНО
 const Log = require('./models/Log');
 
 // Импорт моделей и обработчиков
@@ -53,8 +53,10 @@ const io = new Server(server, {
 });
 
 // ==========================================
-// 1. ГЛОБАЛЬНЫЙ ЭКСПОРТ
+// 1. API ROUTES (Обязательно ПЕРЕД статикой)
 // ==========================================
+
+// ГЛОБАЛЬНЫЙ ЭКСПОРТ
 app.get('/api/export/global', async (req, res) => {
     try {
         const buildings = await Building.find().sort({ order: 1 });
@@ -95,7 +97,6 @@ app.get('/api/export/global', async (req, res) => {
         buildings.forEach(b => {
             let bTotal = 0, bWork = 0, bDoc = 0;
             
-            // ИТЕРАЦИЯ: Объект -> Договоры -> Этажи -> Помещения
             (b.contracts || []).forEach(c => {
                 (c.floors || []).sort((x,y) => (x.order || 0) - (y.order || 0)).forEach(f => {
                     (f.rooms || []).sort((x,y) => (x.order || 0) - (y.order || 0)).forEach(r => {
@@ -150,9 +151,7 @@ app.get('/api/export/global', async (req, res) => {
     }
 });
 
-// ==========================================
-// 2. ЭКСПОРТ КОНКРЕТНОГО ДОМА
-// ==========================================
+// ЭКСПОРТ КОНКРЕТНОГО ДОМА
 app.get('/api/export/:buildingId', async (req, res) => {
     try {
         const building = await Building.findOne({ id: req.params.buildingId });
@@ -182,7 +181,6 @@ app.get('/api/export/:buildingId', async (req, res) => {
         headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
         headerRow.height = 25;
 
-        // ИТЕРАЦИЯ: Договоры -> Этажи -> Помещения
         (building.contracts || []).sort((a,b) => (a.order||0)-(b.order||0)).forEach(contract => {
             (contract.floors || []).sort((a,b) => (a.order||0)-(b.order||0)).forEach(floor => {
                  (floor.rooms || []).sort((a,b) => (a.order||0)-(b.order||0)).forEach(room => {
@@ -241,6 +239,7 @@ app.get('/api/export/:buildingId', async (req, res) => {
     }
 });
 
+// --- Socket.IO ---
 io.on('connection', async (socket) => {
     try {
         const buildings = await Building.find().sort({ order: 1 });
@@ -256,17 +255,27 @@ cleanOldLogs();
 setInterval(cleanOldLogs, 24 * 60 * 60 * 1000);
 
 // =========================================================
-//  ВАЖНО: РАЗДАЧА ФРОНТЕНДА (Фикс 404 и белого экрана)
+// 2. РАЗДАЧА ФРОНТЕНДА (Фикс 404 при обновлении страницы)
 // =========================================================
 
-// Указываем путь к папке dist в клиенте: "выйти назад (..) -> client -> dist"
-const clientDistPath = path.join(__dirname, '../client/dist');
+// Определяем путь к папке сборки клиента
+// Предполагается, что структура: /repo/client/dist и /repo/server/index.js
+// Или /repo/server/index.js и /repo/client/dist
+const clientDistPath = path.resolve(__dirname, '../client/dist');
+console.log(`[System] Serving static files from: ${clientDistPath}`);
 
+// 1. Сначала отдаем статические файлы (JS, CSS, картинки)
 app.use(express.static(clientDistPath));
 
-// "Catch-All" обработчик для React Router
+// 2. Catch-All Route: Все остальные запросы (dashboard, users и т.д.) перенаправляем на index.html
+// Это позволяет React Router обработать маршрут на клиенте
 app.get('*', (req, res) => {
-    res.sendFile(path.join(clientDistPath, 'index.html'));
+    res.sendFile(path.join(clientDistPath, 'index.html'), (err) => {
+        if (err) {
+            console.error("[Server] Error sending index.html:", err);
+            res.status(500).send("Server Error: Client build not found. Did you run 'npm run build'?");
+        }
+    });
 });
 
 const PORT = process.env.PORT || 3001;
