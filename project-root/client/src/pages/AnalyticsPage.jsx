@@ -85,7 +85,7 @@ const AnalyticsPage = ({ buildings, user }) => {
             <div className="control-bar">
                 <div className="control-group">
                     <div className="control-label">Кабинет руководителя</div>
-                    <div className="control-value">Сводная аналитика</div>
+                    <div className="control-value">Все объекты (Аналитика)</div>
                 </div>
                 <div className="control-actions">
                      <button className="action-btn primary" onClick={handleGlobalExport} style={{display:'flex', alignItems:'center', gap:10}}>

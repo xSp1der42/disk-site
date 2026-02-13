@@ -87,7 +87,7 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysAc
                         {filterGroupId && <button className="icon-btn-danger" onClick={() => setFilterGroupId('')}><X size={14}/></button>}
                     </div>
                     
-                    {/* КНОПКА ЭКСПОРТА ВЕРНУЛАСЬ */}
+                    {/* КНОПКА ЭКСПОРТА */}
                     <button className="action-btn secondary" onClick={handleExport} title="Скачать Excel по этому объекту">
                         <Download size={18} /> Отчет
                     </button>
@@ -135,7 +135,7 @@ const ContractPage = ({ buildings, user, actions, setSelectedRoom, groups, sysAc
                                         const hasUnread = hasUnreadInRoom(room);
 
                                         return (
-                                            <div key={room.id} className={`room-item ${statusClass} ${isHighlighted ? 'filtered-highlight' : ''}`} onClick={() => setSelectedRoom({ buildingId: building.id, contractId: contract.id, floorId: floor.id, room })} draggable={isReorderingMode} onDragStart={(e) => onDragStart(e, 'room', room, roomIndex, floor.id)} onDragEnd={onDragEnd} onDragOver={(e) => { if(isReorderingMode) e.preventDefault(); }} onDrop={(e) => onDrop(e, 'room', roomIndex, floor.id)} style={{cursor: isReorderingMode ? 'grab' : 'pointer'}}>
+                                            <div key={room.id} className={`room-item ${statusClass} ${isHighlighted ? 'filtered-highlight' : ''}`} onClick={() => setSelectedRoom({ buildingId: building.id, contractId: contract.id, floorId: f.id, room })} draggable={isReorderingMode} onDragStart={(e) => onDragStart(e, 'room', room, roomIndex, floor.id)} onDragEnd={onDragEnd} onDragOver={(e) => { if(isReorderingMode) e.preventDefault(); }} onDrop={(e) => onDrop(e, 'room', roomIndex, floor.id)} style={{cursor: isReorderingMode ? 'grab' : 'pointer'}}>
                                                 
                                                 {/* КРАСНАЯ ТОЧКА */}
                                                 {hasUnread && (

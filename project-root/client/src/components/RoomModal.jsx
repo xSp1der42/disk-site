@@ -83,8 +83,25 @@ const ChatPopup = ({ task, currentUser, onAddComment, onClose }) => {
         );
     };
 
+    // Fix: Moved positioning styles to fix "stuck in frame" issue
+    const popupStyle = {
+        position: 'absolute', 
+        top: '100%', 
+        right: -10, // Shifted slightly
+        zIndex: 2000, // Very high Z-index to float above table
+        background: 'var(--bg-card)', 
+        border: '1px solid var(--border-color)', 
+        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)', // Heavy shadow
+        borderRadius: 12, 
+        width: 320, 
+        height: 450, 
+        display: 'flex', 
+        flexDirection: 'column', 
+        marginTop: 8
+    };
+
     return (
-        <div style={{ position: 'absolute', top: '100%', right: -50, zIndex: 100, background: 'var(--bg-card)', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-lg)', borderRadius: 12, width: 320, height: 450, display: 'flex', flexDirection: 'column', marginTop: 8 }} onClick={e => e.stopPropagation()}>
+        <div style={popupStyle} onClick={e => e.stopPropagation()}>
             <div style={{padding: '12px 16px', borderBottom: '1px solid var(--border-color)', display:'flex', justifyContent:'space-between', alignItems:'center'}}><span style={{fontWeight:600}}>Комментарии</span><button onClick={onClose} style={{background:'none', border:'none', cursor:'pointer'}}><X size={16}/></button></div>
             
             <div ref={chatBodyRef} style={{flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--bg-body)'}}>
@@ -292,14 +309,25 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
                                                                     <MessageSquare size={18}/>
                                                                     {hasNewMsg && <span style={{position:'absolute', top:-2, right:-2, width:8, height:8, background:'#ef4444', borderRadius:'50%', border: '1px solid white'}}></span>}
                                                                 </button>
+                                                                {/* CHAT POPUP RENDERED HERE, BUT STYLED WITH Z-INDEX */}
                                                                 {activeChatPopup === task.id && <ChatPopup task={task} currentUser={currentUser} onAddComment={(text, att) => handleAddComment(task.id, text, att)} onClose={() => setActiveChatPopup(null)} />}
                                                             </div>
                                                         </td>
                                                         <td onClick={() => actions.toggleTask(selectedRoom.buildingId, selectedRoom.contractId, selectedRoom.floorId, selectedRoom.room.id, task.id, 'work_done', task.work_done)}>
-                                                            <div className="checkbox-wrapper"><div className={`checkbox-custom ${task.work_done ? 'cb-green' : ''}`}>{task.work_done && <Hammer size={20}/>}</div></div>
+                                                            <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:4}}>
+                                                                <div className="checkbox-wrapper"><div className={`checkbox-custom ${task.work_done ? 'cb-green' : ''}`}>{task.work_done && <Hammer size={20}/>}</div></div>
+                                                                <span style={{fontSize:'0.65rem', fontWeight:600, color: task.work_done ? 'var(--status-green-text)' : 'var(--text-light)', textTransform:'uppercase'}}>
+                                                                    {task.work_done ? 'ГОТОВО' : 'Не выполнено'}
+                                                                </span>
+                                                            </div>
                                                         </td>
                                                         <td onClick={() => actions.toggleTask(selectedRoom.buildingId, selectedRoom.contractId, selectedRoom.floorId, selectedRoom.room.id, task.id, 'doc_done', task.doc_done)}>
-                                                            <div className="checkbox-wrapper"><div className={`checkbox-custom ${task.doc_done ? 'cb-orange' : ''}`}>{task.doc_done && <FileText size={20}/>}</div></div>
+                                                            <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:4}}>
+                                                                <div className="checkbox-wrapper"><div className={`checkbox-custom ${task.doc_done ? 'cb-orange' : ''}`}>{task.doc_done && <FileText size={20}/>}</div></div>
+                                                                <span style={{fontSize:'0.65rem', fontWeight:600, color: task.doc_done ? 'var(--status-orange-text)' : 'var(--text-light)', textTransform:'uppercase'}}>
+                                                                    {task.doc_done ? 'СДАНО' : 'Нет ИД'}
+                                                                </span>
+                                                            </div>
                                                         </td>
                                                         {hasEditRights && <td style={{textAlign:'center'}}><button className="icon-btn-danger" onClick={() => handleDeleteTask(task.id)}><Trash2 size={16}/></button></td>}
                                                     </tr>

@@ -87,7 +87,7 @@ app.get('/api/export/global', async (req, res) => {
             { header: 'Договор', key: 'c_name', width: 20 },
             { header: 'Этаж', key: 'floor', width: 10 },
             { header: 'Помещение', key: 'room', width: 20 },
-            { header: 'Работа', key: 'task', width: 40 },
+            { header: 'СМР (Работа)', key: 'task', width: 40 },
             { header: 'Объем', key: 'vol', width: 10 },
             { header: 'Ед.', key: 'unit', width: 10 },
             { header: 'Статус СМР', key: 'st_work', width: 15 },
@@ -114,8 +114,8 @@ app.get('/api/export/global', async (req, res) => {
                                 task: t.name,
                                 vol: t.volume,
                                 unit: formatUnit(t.unit, t.unit_power),
-                                st_work: t.work_done ? 'ГОТОВО' : 'В работе',
-                                st_doc: t.doc_done ? 'СДАНО' : 'Нет акта'
+                                st_work: t.work_done ? 'ГОТОВО' : 'Не выполнено',
+                                st_doc: t.doc_done ? 'СДАНО' : 'Нет ИД'
                             });
                             
                             const green = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } };
@@ -169,7 +169,7 @@ app.get('/api/export/:buildingId', async (req, res) => {
             { header: 'Договор', key: 'contract', width: 20 },
             { header: 'Этаж', key: 'floor', width: 15 },
             { header: 'Помещение', key: 'room', width: 20 },
-            { header: 'Работа', key: 'task', width: 45 },
+            { header: 'СМР (Работа)', key: 'task', width: 45 },
             { header: 'Ед.', key: 'unit', width: 8, style: { alignment: { horizontal: 'center' } } },
             { header: 'Объем', key: 'volume', width: 10 },
             { header: 'СМР', key: 'work', width: 15, style: { alignment: { horizontal: 'center' } } },
@@ -206,8 +206,8 @@ app.get('/api/export/:buildingId', async (req, res) => {
                                 task: task.name,
                                 unit: formatUnit(task.unit, task.unit_power),
                                 volume: task.volume || 0,
-                                work: task.work_done ? 'ВЫПОЛНЕНО' : 'В работе',
-                                doc: task.doc_done ? 'ПОДПИСАНО' : 'Нет акта'
+                                work: task.work_done ? 'ВЫПОЛНЕНО' : 'Не выполнено',
+                                doc: task.doc_done ? 'СДАНО' : 'Нет ИД'
                             });
 
                             const green = { argb: 'FFC6EFCE' };
