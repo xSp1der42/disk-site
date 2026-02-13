@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import socket from '../utils/socket';
 import { ROLES_CONFIG } from '../utils/constants';
 
@@ -30,12 +30,6 @@ const LogsPage = ({ user }) => {
         };
     }, [logsPage, logsSearch, user]);
 
-    const handleClearLogs = () => {
-        if (window.confirm("Вы уверены? Это действие полностью очистит журнал событий.")) {
-            socket.emit('clear_logs', { user });
-        }
-    };
-
     return (
         <div className="logs-container" style={{display:'flex', flexDirection:'column', height:'100%'}}>
             <div className="control-bar">
@@ -43,15 +37,6 @@ const LogsPage = ({ user }) => {
                     <div className="control-label">Аудит системы</div>
                     <div className="control-value">Журнал действий ({logsTotal})</div>
                 </div>
-                
-                {/* Кнопка очистки логов (только для Админа) */}
-                {user.role === 'admin' && (
-                    <div className="control-actions">
-                        <button className="action-btn secondary" onClick={handleClearLogs} style={{color: '#ef4444', borderColor: '#ef4444'}}>
-                            <Trash2 size={16} /> Очистить журнал
-                        </button>
-                    </div>
-                )}
             </div>
             
             <div className="content-area" style={{display:'flex', flexDirection:'column'}}>
