@@ -6,7 +6,6 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const ExcelJS = require('exceljs');
 const path = require('path'); // <--- ОБЯЗАТЕЛЬНО
-const fs = require('fs'); // Для проверки существования папки
 const Log = require('./models/Log');
 
 // Импорт моделей и обработчиков
@@ -54,10 +53,8 @@ const io = new Server(server, {
 });
 
 // ==========================================
-// 1. API ROUTES
+// 1. ГЛОБАЛЬНЫЙ ЭКСПОРТ
 // ==========================================
-
-// ГЛОБАЛЬНЫЙ ЭКСПОРТ
 app.get('/api/export/global', async (req, res) => {
     try {
         const buildings = await Building.find().sort({ order: 1 });
@@ -87,7 +84,7 @@ app.get('/api/export/global', async (req, res) => {
             { header: 'Договор', key: 'c_name', width: 20 },
             { header: 'Этаж', key: 'floor', width: 10 },
             { header: 'Помещение', key: 'room', width: 20 },
-            { header: 'СМР (Работа)', key: 'task', width: 40 },
+            { header: 'Работа', key: 'task', width: 40 },
             { header: 'Объем', key: 'vol', width: 10 },
             { header: 'Ед.', key: 'unit', width: 10 },
             { header: 'Статус СМР', key: 'st_work', width: 15 },
@@ -98,6 +95,7 @@ app.get('/api/export/global', async (req, res) => {
         buildings.forEach(b => {
             let bTotal = 0, bWork = 0, bDoc = 0;
             
+            // ИТЕРАЦИЯ: Объект -> Договоры -> Этажи -> Помещения
             (b.contracts || []).forEach(c => {
                 (c.floors || []).sort((x,y) => (x.order || 0) - (y.order || 0)).forEach(f => {
                     (f.rooms || []).sort((x,y) => (x.order || 0) - (y.order || 0)).forEach(r => {
@@ -114,8 +112,8 @@ app.get('/api/export/global', async (req, res) => {
                                 task: t.name,
                                 vol: t.volume,
                                 unit: formatUnit(t.unit, t.unit_power),
-                                st_work: t.work_done ? 'ГОТОВО' : 'Не выполнено',
-                                st_doc: t.doc_done ? 'СДАНО' : 'Нет ИД'
+                                st_work: t.work_done ? 'ГОТОВО' : 'В работе',
+                                st_doc: t.doc_done ? 'СДАНО' : 'Нет акта'
                             });
                             
                             const green = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } };
@@ -152,7 +150,9 @@ app.get('/api/export/global', async (req, res) => {
     }
 });
 
-// ЭКСПОРТ КОНКРЕТНОГО ДОМА
+// ==========================================
+// 2. ЭКСПОРТ КОНКРЕТНОГО ДОМА
+// ==========================================
 app.get('/api/export/:buildingId', async (req, res) => {
     try {
         const building = await Building.findOne({ id: req.params.buildingId });
@@ -169,7 +169,7 @@ app.get('/api/export/:buildingId', async (req, res) => {
             { header: 'Договор', key: 'contract', width: 20 },
             { header: 'Этаж', key: 'floor', width: 15 },
             { header: 'Помещение', key: 'room', width: 20 },
-            { header: 'СМР (Работа)', key: 'task', width: 45 },
+            { header: 'Работа', key: 'task', width: 45 },
             { header: 'Ед.', key: 'unit', width: 8, style: { alignment: { horizontal: 'center' } } },
             { header: 'Объем', key: 'volume', width: 10 },
             { header: 'СМР', key: 'work', width: 15, style: { alignment: { horizontal: 'center' } } },
@@ -182,6 +182,7 @@ app.get('/api/export/:buildingId', async (req, res) => {
         headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
         headerRow.height = 25;
 
+        // ИТЕРАЦИЯ: Договоры -> Этажи -> Помещения
         (building.contracts || []).sort((a,b) => (a.order||0)-(b.order||0)).forEach(contract => {
             (contract.floors || []).sort((a,b) => (a.order||0)-(b.order||0)).forEach(floor => {
                  (floor.rooms || []).sort((a,b) => (a.order||0)-(b.order||0)).forEach(room => {
@@ -206,8 +207,8 @@ app.get('/api/export/:buildingId', async (req, res) => {
                                 task: task.name,
                                 unit: formatUnit(task.unit, task.unit_power),
                                 volume: task.volume || 0,
-                                work: task.work_done ? 'ВЫПОЛНЕНО' : 'Не выполнено',
-                                doc: task.doc_done ? 'СДАНО' : 'Нет ИД'
+                                work: task.work_done ? 'ВЫПОЛНЕНО' : 'В работе',
+                                doc: task.doc_done ? 'ПОДПИСАНО' : 'Нет акта'
                             });
 
                             const green = { argb: 'FFC6EFCE' };
@@ -240,7 +241,6 @@ app.get('/api/export/:buildingId', async (req, res) => {
     }
 });
 
-// --- Socket.IO ---
 io.on('connection', async (socket) => {
     try {
         const buildings = await Building.find().sort({ order: 1 });
@@ -256,34 +256,17 @@ cleanOldLogs();
 setInterval(cleanOldLogs, 24 * 60 * 60 * 1000);
 
 // =========================================================
-// 2. РАЗДАЧА ФРОНТЕНДА (React SPA Fix)
+//  ВАЖНО: РАЗДАЧА ФРОНТЕНДА (Фикс 404 и белого экрана)
 // =========================================================
 
-// Вычисляем правильный путь.
-// __dirname — это папка, где лежит этот файл (server).
-// Нам нужно выйти на уровень вверх (..) и зайти в client/dist.
+// Указываем путь к папке dist в клиенте: "выйти назад (..) -> client -> dist"
 const clientDistPath = path.join(__dirname, '../client/dist');
-const indexPath = path.join(clientDistPath, 'index.html');
 
-console.log(`[System] Путь к статике (dist): ${clientDistPath}`);
-console.log(`[System] Путь к index.html: ${indexPath}`);
-
-// Проверка: существует ли папка. Если нет — Render не собрал фронтенд.
-if (!fs.existsSync(clientDistPath)) {
-    console.error(`[CRITICAL ERROR] Папка ${clientDistPath} НЕ НАЙДЕНА!`);
-    console.error(`Выполните команду сборки на Render: "cd client && npm install && npm run build && cd ../server && npm install"`);
-}
-
-// 1. Отдаем статику (JS, CSS, картинки)
 app.use(express.static(clientDistPath));
 
-// 2. ГЛАВНЫЙ ФИКС: Любой запрос, который не API и не статика -> отдаем index.html
+// "Catch-All" обработчик для React Router
 app.get('*', (req, res) => {
-    if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
-    } else {
-        res.status(500).send('Ошибка сервера: Файл index.html не найден. Проверьте сборку фронтенда.');
-    }
+    res.sendFile(path.join(clientDistPath, 'index.html'));
 });
 
 const PORT = process.env.PORT || 3001;

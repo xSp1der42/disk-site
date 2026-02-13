@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Pencil, Trash2, Layers, Hammer, FileText, PlusCircle, Calendar, MessageSquare, Clock, Send, X, Search, Plus, Paperclip, File as FileIcon } from 'lucide-react';
+import { Pencil, Trash2, Layers, Hammer, FileText, PlusCircle, Calendar, MessageSquare, Clock, Send, X, Search, Plus, Paperclip, File as FileIcon, Check } from 'lucide-react';
 import socket from '../utils/socket';
 import { hasUnreadInTask } from '../utils/helpers';
 
@@ -17,6 +17,7 @@ const DatePickerPopup = ({ task, onSave, onClose }) => {
     );
 };
 
+// --- ИСПРАВЛЕННЫЙ ЧАТ ---
 const ChatPopup = ({ task, currentUser, onAddComment, onClose }) => {
     const [text, setText] = useState('');
     const [pendingFile, setPendingFile] = useState(null); 
@@ -42,19 +43,37 @@ const ChatPopup = ({ task, currentUser, onAddComment, onClose }) => {
     const handleFileSelect = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        if (file.size > 5 * 1024 * 1024) { alert("Максимум 5 МБ."); return; }
+        
+        // Лимит 5 MB (безопасно для base64)
+        if (file.size > 5 * 1024 * 1024) {
+            alert("Файл слишком большой! Максимум 5 МБ.");
+            return;
+        }
+
         const reader = new FileReader();
         reader.onload = (evt) => {
-            setPendingFile({ name: file.name, data: evt.target.result, type: file.type });
+            const base64 = evt.target.result;
+            setPendingFile({ 
+                name: file.name, 
+                data: base64, 
+                type: file.type 
+            });
         };
         reader.readAsDataURL(file);
     };
 
-    const removePendingFile = () => { setPendingFile(null); if(fileInputRef.current) fileInputRef.current.value = ''; }
+    const removePendingFile = () => {
+        setPendingFile(null);
+        if(fileInputRef.current) fileInputRef.current.value = '';
+    }
 
     const renderAttachment = (att) => {
         if (att.type.startsWith('image/')) {
-            return <div style={{marginTop: 5}}><img src={att.data} alt={att.name} style={{maxWidth: '100%', borderRadius: 8, cursor:'pointer'}} onClick={() => window.open(att.data)} /></div>;
+            return (
+                <div style={{marginTop: 5}}>
+                    <img src={att.data} alt={att.name} style={{maxWidth: '100%', borderRadius: 8, cursor:'pointer'}} onClick={() => window.open(att.data)} />
+                </div>
+            );
         }
         return (
             <div style={{marginTop: 5, padding: 6, background: 'rgba(255,255,255,0.2)', borderRadius: 6, fontSize: '0.85rem', display:'flex', alignItems:'center', gap:5}}>
@@ -64,74 +83,48 @@ const ChatPopup = ({ task, currentUser, onAddComment, onClose }) => {
         );
     };
 
-    // ФИКС: position: fixed, чтобы не обрезалось таблицей
-    const popupStyle = {
-        position: 'fixed', 
-        top: '50%', 
-        left: '50%', 
-        transform: 'translate(-50%, -50%)',
-        zIndex: 9999, 
-        background: 'var(--bg-card)', 
-        border: '1px solid var(--border-color)', 
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', 
-        borderRadius: 16, 
-        width: 380, 
-        height: 500, 
-        display: 'flex', 
-        flexDirection: 'column'
-    };
-
     return (
-        <>
-            <div style={{position:'fixed', inset:0, zIndex: 9998, background:'rgba(0,0,0,0.3)'}} onClick={onClose}></div>
-            <div style={popupStyle} onClick={e => e.stopPropagation()}>
-                <div style={{padding: '16px', borderBottom: '1px solid var(--border-color)', display:'flex', justifyContent:'space-between', alignItems:'center', background:'var(--bg-hover)', borderRadius:'16px 16px 0 0'}}>
-                    <div style={{fontWeight:700, fontSize:'1rem'}}>Чат: {task.name}</div>
-                    <button onClick={onClose} style={{background:'none', border:'none', cursor:'pointer'}}><X size={20}/></button>
-                </div>
-                
-                <div ref={chatBodyRef} style={{flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12, background: 'var(--bg-body)'}}>
-                    {(!task.comments || task.comments.length === 0) && <div style={{textAlign:'center', color:'var(--text-muted)', fontSize:'0.85rem', marginTop: 20}}>Нет комментариев.</div>}
-                    {task.comments?.map(c => (
-                        <div key={c.id} style={{ alignSelf: (c.author.includes(currentUser.surname) || c.role === currentUser.role) ? 'flex-end' : 'flex-start', maxWidth: '85%', background: (c.author.includes(currentUser.surname) || c.role === currentUser.role) ? 'var(--accent-primary)' : 'var(--bg-card)', color: (c.author.includes(currentUser.surname) || c.role === currentUser.role) ? 'white' : 'var(--text-main)', padding: '10px 14px', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-color)' }}>
-                            <div style={{fontSize:'0.7rem', fontWeight:700, opacity: 0.8, marginBottom: 4}}>{c.author}</div>
-                            <div style={{fontSize:'0.9rem', wordBreak: 'break-word', lineHeight: 1.4}}>{c.text}</div>
-                            {c.attachments && c.attachments.map((att, i) => <div key={i}>{renderAttachment(att)}</div>)}
-                        </div>
-                    ))}
-                </div>
-
-                {pendingFile && (
-                    <div style={{padding: '8px 12px', background: 'var(--bg-hover)', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem'}}>
-                        <div style={{display:'flex', alignItems:'center', gap: 6, overflow:'hidden'}}>
-                            <Paperclip size={14}/>
-                            <span style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth: 200}}>{pendingFile.name}</span>
-                        </div>
-                        <button onClick={removePendingFile} style={{border:'none', background:'transparent', cursor:'pointer', color:'#ef4444'}}><X size={14}/></button>
+        <div style={{ position: 'absolute', top: '100%', right: -50, zIndex: 100, background: 'var(--bg-card)', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-lg)', borderRadius: 12, width: 320, height: 450, display: 'flex', flexDirection: 'column', marginTop: 8 }} onClick={e => e.stopPropagation()}>
+            <div style={{padding: '12px 16px', borderBottom: '1px solid var(--border-color)', display:'flex', justifyContent:'space-between', alignItems:'center'}}><span style={{fontWeight:600}}>Комментарии</span><button onClick={onClose} style={{background:'none', border:'none', cursor:'pointer'}}><X size={16}/></button></div>
+            
+            <div ref={chatBodyRef} style={{flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--bg-body)'}}>
+                {(!task.comments || task.comments.length === 0) && <div style={{textAlign:'center', color:'var(--text-muted)', fontSize:'0.85rem', marginTop: 20}}>Нет комментариев.</div>}
+                {task.comments?.map(c => (
+                    <div key={c.id} style={{ alignSelf: (c.author.includes(currentUser.surname) || c.role === currentUser.role) ? 'flex-end' : 'flex-start', maxWidth: '85%', background: (c.author.includes(currentUser.surname) || c.role === currentUser.role) ? 'var(--accent-primary)' : 'var(--bg-card)', color: (c.author.includes(currentUser.surname) || c.role === currentUser.role) ? 'white' : 'var(--text-main)', padding: '8px 12px', borderRadius: 12, boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-color)' }}>
+                        <div style={{fontSize:'0.7rem', fontWeight:700, opacity: 0.8, marginBottom: 2}}>{c.author}</div>
+                        <div style={{fontSize:'0.9rem', wordBreak: 'break-word'}}>{c.text}</div>
+                        {c.attachments && c.attachments.map((att, i) => (
+                            <div key={i}>{renderAttachment(att)}</div>
+                        ))}
                     </div>
-                )}
-
-                <form onSubmit={handleSend} style={{padding: 12, borderTop: '1px solid var(--border-color)', display:'flex', gap: 8, background: 'var(--bg-card)', alignItems: 'center', borderRadius:'0 0 16px 16px'}}>
-                    <label style={{cursor:'pointer', color: pendingFile ? 'var(--accent-primary)' : 'var(--text-muted)', padding: 8}} title="Прикрепить файл">
-                        <Paperclip size={20}/>
-                        <input type="file" style={{display:'none'}} ref={fileInputRef} onChange={handleFileSelect}/>
-                    </label>
-                    <input className="sm-input" style={{flex:1, padding: 10}} placeholder="Написать сообщение..." value={text} onChange={e => setText(e.target.value)} />
-                    <button type="submit" className="action-btn primary" style={{padding: '0 12px'}} disabled={!text.trim() && !pendingFile}><Send size={18}/></button>
-                </form>
+                ))}
             </div>
-        </>
+
+            {pendingFile && (
+                <div style={{padding: '8px 12px', background: 'var(--bg-hover)', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem'}}>
+                    <div style={{display:'flex', alignItems:'center', gap: 6, overflow:'hidden'}}>
+                        <Paperclip size={14}/>
+                        <span style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth: 200}}>{pendingFile.name}</span>
+                    </div>
+                    <button onClick={removePendingFile} style={{border:'none', background:'transparent', cursor:'pointer', color:'#ef4444'}}><X size={14}/></button>
+                </div>
+            )}
+
+            <form onSubmit={handleSend} style={{padding: 12, borderTop: '1px solid var(--border-color)', display:'flex', gap: 8, background: 'var(--bg-card)', alignItems: 'center'}}>
+                <label style={{cursor:'pointer', color: pendingFile ? 'var(--accent-primary)' : 'var(--text-muted)', padding: 4}} title="Прикрепить файл">
+                    <Paperclip size={20}/>
+                    <input type="file" style={{display:'none'}} ref={fileInputRef} onChange={handleFileSelect}/>
+                </label>
+                <input className="sm-input" style={{flex:1}} placeholder="Написать..." value={text} onChange={e => setText(e.target.value)} />
+                <button type="submit" className="action-btn primary" style={{padding: '0 12px'}} disabled={!text.trim() && !pendingFile}><Send size={16}/></button>
+            </form>
+        </div>
     );
 };
 
 const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, actions, groups, sysActions }) => {
-    // ЗАЩИТА ОТ КРАША: Если данные не пришли или структура неполная
-    if (!selectedRoom || !selectedRoom.room) return null;
-
     useEffect(() => {
-        if (selectedRoom?.room?.id) {
-            localStorage.setItem(`viewed_room_${selectedRoom.room.id}`, new Date().toISOString());
-        }
+        if (selectedRoom) localStorage.setItem(`viewed_room_${selectedRoom.room.id}`, new Date().toISOString());
     }, [selectedRoom]);
 
     const [searchQuery, setSearchQuery] = useState('');
@@ -150,7 +143,6 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
     const [readState, setReadState] = useState(0); 
 
     const filteredTasks = useMemo(() => {
-        // ЗАЩИТА ОТ UNDEFINED TASKS
         let tasks = selectedRoom.room.tasks || [];
         if (filterGroupId) tasks = tasks.filter(t => (t.groupId || 'uncategorized') === filterGroupId);
         if (searchQuery) tasks = tasks.filter(t => t.name.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -188,6 +180,7 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
     const handleRenameRoom = () => sysActions.prompt("Переименование", "Новое название:", (newName) => { if(newName !== selectedRoom.room.name) actions.renameItem('room', {buildingId: selectedRoom.buildingId, contractId: selectedRoom.contractId, floorId: selectedRoom.floorId, roomId: selectedRoom.room.id}, newName); }, selectedRoom.room.name);
     const handleSaveDates = (taskId, start, end) => { actions.updateTaskDates(selectedRoom.buildingId, selectedRoom.contractId, selectedRoom.floorId, selectedRoom.room.id, taskId, { start, end }); setActiveDatePopup(null); };
     
+    // ИСПРАВЛЕНО: Теперь используем actions.addTaskComment, чтобы пройти через App.jsx
     const handleAddComment = (taskId, text, attachments) => { 
         actions.addTaskComment(selectedRoom.buildingId, selectedRoom.contractId, selectedRoom.floorId, selectedRoom.room.id, taskId, text, attachments);
         markAsRead(taskId); 
@@ -299,23 +292,14 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
                                                                     <MessageSquare size={18}/>
                                                                     {hasNewMsg && <span style={{position:'absolute', top:-2, right:-2, width:8, height:8, background:'#ef4444', borderRadius:'50%', border: '1px solid white'}}></span>}
                                                                 </button>
+                                                                {activeChatPopup === task.id && <ChatPopup task={task} currentUser={currentUser} onAddComment={(text, att) => handleAddComment(task.id, text, att)} onClose={() => setActiveChatPopup(null)} />}
                                                             </div>
                                                         </td>
                                                         <td onClick={() => actions.toggleTask(selectedRoom.buildingId, selectedRoom.contractId, selectedRoom.floorId, selectedRoom.room.id, task.id, 'work_done', task.work_done)}>
-                                                            <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:4}}>
-                                                                <div className="checkbox-wrapper"><div className={`checkbox-custom ${task.work_done ? 'cb-green' : ''}`}>{task.work_done && <Hammer size={20}/>}</div></div>
-                                                                <span style={{fontSize:'0.65rem', fontWeight:600, color: task.work_done ? 'var(--status-green-text)' : 'var(--text-light)', textTransform:'uppercase'}}>
-                                                                    {task.work_done ? 'ГОТОВО' : 'Не выполнено'}
-                                                                </span>
-                                                            </div>
+                                                            <div className="checkbox-wrapper"><div className={`checkbox-custom ${task.work_done ? 'cb-green' : ''}`}>{task.work_done && <Hammer size={20}/>}</div></div>
                                                         </td>
                                                         <td onClick={() => actions.toggleTask(selectedRoom.buildingId, selectedRoom.contractId, selectedRoom.floorId, selectedRoom.room.id, task.id, 'doc_done', task.doc_done)}>
-                                                            <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:4}}>
-                                                                <div className="checkbox-wrapper"><div className={`checkbox-custom ${task.doc_done ? 'cb-orange' : ''}`}>{task.doc_done && <FileText size={20}/>}</div></div>
-                                                                <span style={{fontSize:'0.65rem', fontWeight:600, color: task.doc_done ? 'var(--status-orange-text)' : 'var(--text-light)', textTransform:'uppercase'}}>
-                                                                    {task.doc_done ? 'СДАНО' : 'Нет ИД'}
-                                                                </span>
-                                                            </div>
+                                                            <div className="checkbox-wrapper"><div className={`checkbox-custom ${task.doc_done ? 'cb-orange' : ''}`}>{task.doc_done && <FileText size={20}/>}</div></div>
                                                         </td>
                                                         {hasEditRights && <td style={{textAlign:'center'}}><button className="icon-btn-danger" onClick={() => handleDeleteTask(task.id)}><Trash2 size={16}/></button></td>}
                                                     </tr>
@@ -390,15 +374,6 @@ const RoomModal = ({ selectedRoom, setSelectedRoom, hasEditRights, currentUser, 
                         </tbody>
                     </table>
                 </div>
-
-                {/* РЕНДЕР ЧАТА ЗА ПРЕДЕЛАМИ ТАБЛИЦЫ */}
-                {activeChatPopup && (
-                    (() => {
-                        const t = filteredTasks.find(t => t.id === activeChatPopup);
-                        if (!t) return null;
-                        return <ChatPopup task={t} currentUser={currentUser} onAddComment={(text, att) => handleAddComment(t.id, text, att)} onClose={() => setActiveChatPopup(null)} />;
-                    })()
-                )}
 
                 {hasEditRights && (
                     <div className="modal-footer">
